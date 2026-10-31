@@ -1,0 +1,8 @@
+geopandas
+rasterio
+shapely
+psycopg2-binary
+sqlalchemy
+geoalchemy2
+openpyxl
+pandas

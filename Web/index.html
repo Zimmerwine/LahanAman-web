@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LahanAman GeoAnalytics DIY — WebGIS Triase Geoteknik &amp; Kelayakan Lahan</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- TOP NAVBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">LA</div>
+      <div class="brand-title">
+        <div class="brand-heading">
+          <h1>LahanAman GeoAnalytics DIY</h1>
+          <span class="crs-badge" title="Standar Perhitungan Spasial: EPSG:32749 (UTM Zone 49S)">UTM 49S: EPSG:32749</span>
+          <span class="crs-badge crs-badge-wgs" title="Visualisasi Peta Dasar: EPSG:4326 (WGS 84)">Peta: EPSG:4326</span>
+        </div>
+        <p>Sistem Cerdas Triase Geoteknik, Kestabilan Lereng &amp; Rekomendasi Kelayakan Lahan Tingkat Dusun DIY</p>
+      </div>
+    </div>
+
+    <div class="topbar-stats">
+      <div class="stat-pill" title="Zona Hijau (Aman / Risiko Rendah)">
+        <span class="dot" style="background:#10B981;"></span>
+        <span>Zona Hijau: <b id="stat-hijau">0</b></span>
+      </div>
+      <div class="stat-pill" title="Zona Kuning (Waspada / Perlu Mitigasi &amp; RAB)">
+        <span class="dot" style="background:#F59E0B;"></span>
+        <span>Zona Kuning: <b id="stat-kuning">0</b></span>
+      </div>
+      <div class="stat-pill" title="Zona Merah (Bahaya Kritis / Non-Buildable)">
+        <span class="dot" style="background:#EF4444;"></span>
+        <span>Zona Merah: <b id="stat-merah">0</b></span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn" id="btn-clear-selection" title="Bersihkan sorotan poligon (Clean Map State)">
+        🧹 Peta Bersih
+      </button>
+      <button class="btn btn-primary" id="btn-reset-view" title="Tampilkan jangkauan wilayah DIY">
+        🎯 Reset DIY
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="workspace">
+
+    <!-- LEFT SIDEBAR: MULTI-LEVEL DUSUN SEARCH, COORDINATE INSPECTOR & BASEMAP -->
+    <aside class="sidebar-left">
+      <div class="panel-scroll">
+
+        <!-- PENCARIAN MULTI-LEVEL PRESISI HINGGA DUSUN / PADUKUHAN -->
+        <div class="section-card">
+          <div class="section-title">
+            <span>🔍 Pencarian Dusun &amp; Wilayah</span>
+            <span id="filter-count-badge" class="badge-count">Multi-Level</span>
+          </div>
+          <div class="search-box-wrap">
+            <input
+              type="text"
+              id="search-input"
+              class="search-input"
+              placeholder="Ketik Dusun (mis: Kinahrejo), Kalurahan, Kapanewon..."
+              autocomplete="off"
+            />
+            <button type="button" id="btn-search-go" class="search-go-btn" title="Cari Lokasi / Geocoding Dusun">Cari</button>
+          </div>
+          <div id="search-status-hint" class="search-hint">
+            Mendukung pencarian Dusun/Padukuhan, Kalurahan, Kapanewon, Kabupaten, atau klik langsung di peta.
+          </div>
+
+          <div class="filter-row" style="margin-top:6px;margin-bottom:8px;">
+            <select id="filter-kabupaten" class="select-box">
+              <option value="ALL">Semua Kab./Kota (DIY)</option>
+              <option value="Kab. Sleman">Kab. Sleman</option>
+              <option value="Kab. Bantul">Kab. Bantul</option>
+              <option value="Kota Yogyakarta">Kota Yogyakarta</option>
+            </select>
+            <select id="filter-zona" class="select-box">
+              <option value="ALL">Semua Status Triase</option>
+              <option value="Zona Hijau">Zona Hijau (Aman)</option>
+              <option value="Zona Kuning">Zona Kuning (Mitigasi)</option>
+              <option value="Zona Merah">Zona Merah (Kritis)</option>
+            </select>
+          </div>
+
+          <div id="search-results" class="search-results"></div>
+        </div>
+
+        <!-- PETA DASAR (BASEMAP SWITCHER) -->
+        <div class="section-card">
+          <div class="section-title">
+            <span>🗺️ Peta Dasar (Basemap)</span>
+          </div>
+          <select id="basemap-select" class="select-box">
+            <option value="google_hybrid" selected>Google Maps Hybrid (Satelit + Jalan/Label)</option>
+            <option value="osm">OpenStreetMap Standar</option>
+            <option value="google_sat">Google Maps Satellite (Citra Murni)</option>
+            <option value="google_terrain">Google Maps Terrain (Kontur &amp; Topografi)</option>
+            <option value="google_streets">Google Maps Streets (Peta Jalan)</option>
+          </select>
+
+          <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px;">
+              <span>Intensitas Warna Sorotan Wilayah</span>
+              <span id="opacity-val">55%</span>
+            </div>
+            <input type="range" id="poly-opacity" min="20" max="90" value="55" style="width:100%;" />
+          </div>
+        </div>
+
+        <!-- INSPEKSI KOORDINAT PRESISI (WGS84 & UTM 49S) -->
+        <div class="section-card">
+          <div class="section-title">
+            <span>📐 Inspeksi Titik Koordinat</span>
+            <span class="badge-count">EPSG:4326 / 32749</span>
+          </div>
+
+          <div class="method-nav-tabs">
+            <button class="method-tab-btn active" id="btn-tab-wgs" type="button">
+              🌐 WGS84 (Lat/Lng)
+            </button>
+            <button class="method-tab-btn" id="btn-tab-utm" type="button">
+              📐 UTM 49S (X/Y)
+            </button>
+          </div>
+
+          <!-- PANE 1: LATITUDE & LONGITUDE (EPSG:4326) -->
+          <div id="pane-method-wgs" class="method-pane active">
+            <div class="filter-row" style="margin-top:6px;margin-bottom:6px;">
+              <div style="flex:1;">
+                <label class="input-label">Latitude (° LS)</label>
+                <input type="number" step="0.00001" id="input-lat" class="search-input" style="margin-bottom:0;" placeholder="-7.71670" value="-7.71670" />
+              </div>
+              <div style="flex:1;">
+                <label class="input-label">Longitude (° BT)</label>
+                <input type="number" step="0.00001" id="input-lon" class="search-input" style="margin-bottom:0;" placeholder="110.41860" value="110.41860" />
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btn-analyze-coords" style="width:100%;justify-content:center;">
+              📍 Inspeksi Koordinat WGS84
+            </button>
+          </div>
+
+          <!-- PANE 2: UTM EASTING & NORTHING (EPSG:32749) -->
+          <div id="pane-method-utm" class="method-pane" style="display:none;">
+            <div class="filter-row" style="margin-top:6px;margin-bottom:6px;">
+              <div style="flex:1;">
+                <label class="input-label">Easting X (mE)</label>
+                <input type="number" id="input-utm-x" class="search-input" style="margin-bottom:0;" placeholder="435865" value="435865" />
+              </div>
+              <div style="flex:1;">
+                <label class="input-label">Northing Y (mS)</label>
+                <input type="number" id="input-utm-y" class="search-input" style="margin-bottom:0;" placeholder="9146908" value="9146908" />
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btn-goto-utm" style="width:100%;justify-content:center;">
+              📐 Inspeksi Titik UTM 49S
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- CENTER MAP -->
+    <section class="map-wrapper">
+      <div id="loading-toast" class="loading-toast">⏳ Memuat data spasial geoteknik DIY...</div>
+      <div id="map"></div>
+
+      <!-- LIVE COORDINATE BAR (HITUNGAN EPSG:32749 + PETA EPSG:4326) -->
+      <div class="map-coord-bar">
+        <span>🌐 <b>WGS84 (EPSG:4326)</b>: <span id="coord-wgs">-7.71670°, 110.41860°</span></span>
+        <span class="coord-sep">|</span>
+        <span>📐 <b>UTM 49S (EPSG:32749)</b>: <span id="coord-utm">X: 435.865,0 mE, Y: 9.146.908,0 mS</span></span>
+      </div>
+
+      <!-- CORNER LAYER SWITCHER (CLEAN FLOATING CONTROL) -->
+      <div class="map-layer-switcher" id="map-layer-switcher">
+        <button type="button" class="layer-switcher-toggle" id="btn-toggle-layer-panel" title="Pilih Layer Peta Spasial">
+          <span>🗂️ Layer Spasial</span>
+          <span class="chevron" id="layer-switcher-chevron">▾</span>
+        </button>
+        <div class="layer-switcher-body" id="layer-switcher-body">
+          <div class="layer-switcher-subtitle">Layer Tematik &amp; Referensi (Opsional)</div>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-lereng-poly" />
+            <span>⛰️ Kemiringan Lereng (DEMNAS)</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-geologi" />
+            <span>🪨 Litologi / Formasi Batuan</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-tanah" />
+            <span>🌱 Karakteristik Tanah (Pedologi)</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-idw-hujan" />
+            <span>🌧️ Curah Hujan (Kontur IDW)</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-tutupan" />
+            <span>🏡 Tutupan Lahan (RBI 25K)</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-admin" />
+            <span>🗺️ Garis Batas Administratif</span>
+          </label>
+          <div class="layer-switcher-divider"></div>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-titik-dev" />
+            <span>📍 Titik Uji Sampel Developer</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-area-dev" />
+            <span>⭕ Radius Jangkauan Uji (500m)</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-pos-hujan" />
+            <span>💧 Pos Pengamatan Hujan BBWS</span>
+          </label>
+          <label class="layer-switch-item">
+            <input type="checkbox" id="chk-demnas" />
+            <span>📐 Grid Tile DEMNAS UTM</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- DYNAMIC LEGEND -->
+      <div class="map-legend" id="map-legend"></div>
+    </section>
+
+    <!-- RIGHT SIDEBAR: MODERN GLASSMORPHIC SIDEBAR & AI GEOTECHNICAL ADVISOR -->
+    <aside class="sidebar-right glass-sidebar">
+      <div class="panel-scroll" id="inspector-panel">
+        <!-- Diisi dinamis saat titik/dusun diklik atau dicari -->
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- Leaflet + Proj4js + Proj4Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
+  <!-- Pre-bundled EPSG:32749 GeoJSON Data -->
+  <script src="geojson_bundle.js"></script>
+  <!-- Main Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>
