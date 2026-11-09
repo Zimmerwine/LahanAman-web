@@ -6,6 +6,8 @@
   <title>LahanAman GeoAnalytics DIY — WebGIS Triase Geoteknik &amp; Kelayakan Lahan</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet-Geoman CSS (Drawing Tool Fase 2) -->
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,21 +32,24 @@
     </div>
 
     <div class="topbar-stats">
-      <div class="stat-pill" title="Zona Hijau (Aman / Risiko Rendah)">
-        <span class="dot" style="background:#10B981;"></span>
-        <span>Zona Hijau: <b id="stat-hijau">0</b></span>
+      <div class="stat-pill" title="ZONA HIJAU (Skor &lt; 2,20 | Risiko Rendah - Lahan Datar Stabil / Konstruksi Standar)">
+        <span class="dot" style="background:#2E7D32;"></span>
+        <span>Skor Hijau (&lt;2,20 / Datar): <b id="stat-hijau">0</b></span>
       </div>
-      <div class="stat-pill" title="Zona Kuning (Waspada / Perlu Mitigasi &amp; RAB)">
-        <span class="dot" style="background:#F59E0B;"></span>
-        <span>Zona Kuning: <b id="stat-kuning">0</b></span>
+      <div class="stat-pill" title="ZONA KUNING (Skor 2,20–3,40 | Risiko Sedang - Perlu Mitigasi Drainase/Talud &amp; RAB / Lempung Ekspansif)">
+        <span class="dot" style="background:#FB8C00;"></span>
+        <span>Skor Kuning (2,20–3,40): <b id="stat-kuning">0</b></span>
       </div>
-      <div class="stat-pill" title="Zona Merah (Bahaya Kritis / Non-Buildable)">
-        <span class="dot" style="background:#EF4444;"></span>
-        <span>Zona Merah: <b id="stat-merah">0</b></span>
+      <div class="stat-pill" title="ZONA MERAH (Skor &gt; 3,40 | Risiko Tinggi - Rawan Longsor &amp; Wajib Uji Sondir)">
+        <span class="dot" style="background:#D32F2F;"></span>
+        <span>Skor Merah (&gt;3,40): <b id="stat-merah">0</b></span>
       </div>
     </div>
 
     <div class="topbar-actions">
+      <button class="btn btn-draw-kavling" id="btn-draw-kavling-top" title="Gambar Poligon Kavling Lahan untuk Analisis Segmentasi Zona &amp; Raster">
+        ✏️ Gambar Poligon Kavling
+      </button>
       <button class="btn" id="btn-clear-selection" title="Bersihkan sorotan poligon (Clean Map State)">
         🧹 Peta Bersih
       </button>
@@ -89,10 +94,10 @@
               <option value="Kota Yogyakarta">Kota Yogyakarta</option>
             </select>
             <select id="filter-zona" class="select-box">
-              <option value="ALL">Semua Status Triase</option>
-              <option value="Zona Hijau">Zona Hijau (Aman)</option>
-              <option value="Zona Kuning">Zona Kuning (Mitigasi)</option>
-              <option value="Zona Merah">Zona Merah (Kritis)</option>
+              <option value="ALL">Semua Kelas Skoring (GPKG)</option>
+              <option value="Zona Hijau">Skor &lt; 2,20 — Zona Hijau (Risiko Rendah)</option>
+              <option value="Zona Kuning">Skor 2,20–3,40 — Zona Kuning (Risiko Sedang)</option>
+              <option value="Zona Merah">Skor &gt; 3,40 — Zona Merah (Risiko Tinggi)</option>
             </select>
           </div>
 
@@ -187,14 +192,31 @@
         <span>📐 <b>UTM 49S (EPSG:32749)</b>: <span id="coord-utm">X: 435.865,0 mE, Y: 9.146.908,0 mS</span></span>
       </div>
 
+      <!-- FLOATING KAVLING DRAWING TOOLBAR (MILESTONE FASE 2) -->
+      <div class="map-kavling-toolbar" id="map-kavling-toolbar">
+        <button type="button" class="kavling-tool-btn primary" id="btn-draw-kavling" title="Gambar poligon kavling di peta untuk memotong segmen zona (Hijau, Kuning, Merah) &amp; hitung sudut lereng (β°) serta beda tinggi (H)">
+          <span>✏️ Gambar Poligon Kavling</span>
+        </button>
+        <button type="button" class="kavling-tool-btn demo" id="btn-demo-kavling" title="Uji sampel poligon kavling lintas 3 zona triase (Hijau, Kuning, Merah)">
+          <span>🧪 Sampel Kavling 3-Zona</span>
+        </button>
+        <button type="button" class="kavling-tool-btn danger" id="btn-reset-kavling-map" style="display:none;" title="Hapus Poligon / Reset Kavling">
+          <span>🗑️ Reset Kavling</span>
+        </button>
+      </div>
+
       <!-- CORNER LAYER SWITCHER (CLEAN FLOATING CONTROL) -->
       <div class="map-layer-switcher" id="map-layer-switcher">
         <button type="button" class="layer-switcher-toggle" id="btn-toggle-layer-panel" title="Pilih Layer Peta Spasial">
           <span>🗂️ Layer Spasial</span>
           <span class="chevron" id="layer-switcher-chevron">▾</span>
         </button>
-        <div class="layer-switcher-body" id="layer-switcher-body">
+        <div class="layer-switcher-body" id="layer-switcher-body" data-panel="layer-spasial">
           <div class="layer-switcher-subtitle">Layer Tematik &amp; Referensi (Opsional)</div>
+          <label class="layer-switch-item flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
+            <input type="checkbox" id="chk-kerawanan-longsor" class="rounded text-emerald-600" />
+            <span>⚠️ Peta Skoring Kerawanan Longsor (GPKG)</span>
+          </label>
           <label class="layer-switch-item">
             <input type="checkbox" id="chk-lereng-poly" />
             <span>⛰️ Kemiringan Lereng (DEMNAS)</span>
@@ -208,7 +230,7 @@
             <span>🌱 Karakteristik Tanah (Pedologi)</span>
           </label>
           <label class="layer-switch-item">
-            <input type="checkbox" id="chk-idw-hujan" />
+            <input type="checkbox" id="chk-hujan" data-legacy-id="chk-idw-hujan" />
             <span>🌧️ Curah Hujan (Kontur IDW)</span>
           </label>
           <label class="layer-switch-item">
@@ -252,8 +274,9 @@
 
   </main>
 
-  <!-- Leaflet + Proj4js + Proj4Leaflet -->
+  <!-- Leaflet + Leaflet-Geoman + Proj4js + Proj4Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
   <!-- Pre-bundled EPSG:32749 GeoJSON Data -->

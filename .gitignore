@@ -1,5 +1,6 @@
 # Abaikan folder data dan peta besar
-Data/
-Peta/
+Data/raw
+Data/vector
 **/__pycache__/
 *.pyc
+.env

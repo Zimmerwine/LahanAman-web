@@ -41,6 +41,8 @@ from sqlalchemy.engine import URL
 
 from clean_geojson import (
     bersihkan_poligon_utm,
+    ekstrak_curah_hujan_day8_standar,
+    ekstrak_kerawanan_longsor_day8_standar,
     ekstrak_poligon,
     hilangkan_overlap_internal,
     orient_2d,
@@ -85,11 +87,11 @@ from spatial_loader import (
 # =====================================================================
 SIMPAN_KE_DB = False  # False = lewati PostGIS (re-configuration DB), hanya output GeoJSON EPSG:32749 & Web Bundle
 
-DB_USER = "postgres"
-DB_PASS = os.getenv("PG_PASSWORD", "halo123")
+DB_USER = os.getenv("PG_DBUSER")
+DB_PASS = os.getenv("PG_PASSWORD")
 DB_HOST = "localhost"
 DB_PORT = 5432
-DB_NAME = "lahan_aman_db"
+DB_NAME = os.getenv("PG_DBNAME")
 
 IDW_POWER = 2.0                # Pangkat bobot jarak IDW (Inverse Distance Weighted)
 IDW_GRID_RES_M = 100.0         # Resolusi grid interpolasi IDW wilayah DIY (meter, EPSG:32749)
@@ -114,12 +116,17 @@ def tentukan_zona(skor, lereng_deg=None, jenis_tanah=""):
 
 def label_status_risiko(skor, lereng_deg=None, jenis_tanah=""):
     z = tentukan_zona(skor, lereng_deg, jenis_tanah)
+    is_exp = any(k in str(jenis_tanah).lower() for k in ["grumosol", "ekspansif", "vertisol"])
     if z == "Zona Hijau":
-        return "Zona Hijau (< 2,20 | Aman / Risiko Rendah)"
+        if lereng_deg is not None and float(lereng_deg) <= 8.0 and not is_exp:
+            return "ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil)"
+        return "ZONA HIJAU (Risiko Rendah - Konstruksi Standar)"
     elif z == "Zona Kuning":
-        return "Zona Kuning (2,20 - 3,40 | Waspada - Perlu Mitigasi & RAB)"
+        if lereng_deg is not None and float(lereng_deg) <= 8.0 and is_exp:
+            return "ZONA KUNING (Datar - Waspada Lempung Ekspansif / Pondasi)"
+        return "ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud & RAB)"
     elif z == "Zona Merah":
-        return "Zona Merah (> 3,40 | Bahaya Kritis / Non-Buildable)"
+        return "ZONA MERAH (Risiko Tinggi - Rawan Longsor & Wajib Uji Sondir)"
     return "-"
 
 
@@ -203,13 +210,13 @@ def label_kelas_tanah(skor):
 
 def label_kelas_tutupan(skor):
     peta = {
-        1: "Tambak, waduk, perairan",
-        2: "Kota / pemukiman / bandara",
-        3: "Hutan dan perkebunan",
-        4: "Semak belukar",
-        5: "Tegalan, sawah",
+        1: "Hutan Lindung/Konservasi/Produksi & Badan Air (Perakaran Dalam / Badan Air Datar - Aman)",
+        2: "Kebun / Perkebunan (Kohesi Akar Pohon Sedang 2-5 kPa - Rendah)",
+        3: "Permukiman, Industri, Bandara & Emplasemen (Beban Konstruksi/Surcharge Lereng - Sedang)",
+        4: "Semak/Belukar & Rumput/Tanah Kosong (Akar Dangkal <0.3m & Penahan Air Lemah - Rawan)",
+        5: "Sawah Irigasi, Sawah Tadah Hujan & Tegalan/Ladang (Tanpa Akar Dalam & Infiltrasi Tinggi - Sangat Rawan)",
     }
-    return peta.get(int(skor), "Kota / pemukiman / bandara")
+    return peta.get(int(skor), "Permukiman (Beban Konstruksi/Surcharge Lereng - Sedang)")
 
 
 def petakan_tanah_batuan_wilayah(kabupaten, kapanewon, elevasi_mdpl, lereng_persen):
@@ -353,31 +360,31 @@ def skor_int(series):
     return pd.to_numeric(series, errors="coerce").fillna(1).astype(int)
 
 
-# Prioritas layer tutupan lahan (1 = paling diprioritaskan, tidak tertimpa layer di bawahnya)
+# Prioritas layer tutupan lahan RBI 25K (disesuaikan 100% dengan GPKG/GJS Layer5_Tata Guna Lahan)
 LAYER_TUTUPAN_RBI = [
     ("AGRISAWAH_AR_25K.shp", 1, {
-        "Sawah": ("Sawah", 5),
+        "Sawah": ("Sawah Irigasi", 5),
         "Sawah Tadah Hujan": ("Sawah Tadah Hujan", 5),
-        "*": ("Sawah", 5),
+        "*": ("Sawah Irigasi", 5),
     }),
     ("AGRILADANG_AR_25K.shp", 1, {"*": ("Tegalan/Ladang", 5)}),
-    ("AGRIKEBUN_AR_25K.shp", 1, {"*": ("Perkebunan/Kebun", 3)}),
-    ("AGRITANAMCAMPUR_AR_25K.shp", 1, {"*": ("Vegetasi Non Budidaya Lainnya", 3)}),
-    ("NONAGRIHUTANBASAH_AR_25K.shp", 1, {"*": ("Hutan Rawa/Gambut", 3)}),
-    ("NONAGRIHUTANKERING_AR_25K.shp", 1, {"*": ("Hutan Rimba", 3)}),
-    ("NONAGRISEMAKBELUKAR_AR_25K.shp", 1, {"*": ("Semak Belukar", 4)}),
-    ("NONAGRIALANG_AR_25K.shp", 1, {"*": ("Padang Rumput", 4)}),
-    ("PEMUKIMAN_AR_25K.shp", 1, {"*": ("Permukiman dan Tempat Kegiatan", 2)}),
-    ("DANAU_AR_25K.shp", 2, {"*": ("Tubuh Air (Danau/Situ)", 1)}),
-    ("SUNGAI_AR_25K.shp", 2, {"*": ("Tubuh Air (Sungai)", 1)}),
-    ("PASIR_AR_25K.shp", 2, {"*": ("Pasir/Bukit Pasir Darat", 5)}),
-    ("PESISIR_AR_25K.shp", 2, {"*": ("Pasir/Bukit Pasir Laut", 5)}),
-    ("RUNWAY_AR_25K.shp", 2, {"*": ("Permukiman dan Tempat Kegiatan", 2)}),
-    ("BANGUNAN_AR_25K.shp", 3, {"*": ("Permukiman dan Tempat Kegiatan", 2)}),
+    ("AGRIKEBUN_AR_25K.shp", 1, {"*": ("Kebun", 2)}),
+    ("AGRITANAMCAMPUR_AR_25K.shp", 1, {"*": ("Kebun", 2)}),
+    ("NONAGRIHUTANBASAH_AR_25K.shp", 1, {"*": ("Hutan Konservasi", 1)}),
+    ("NONAGRIHUTANKERING_AR_25K.shp", 1, {"*": ("Hutan Lindung", 1)}),
+    ("NONAGRISEMAKBELUKAR_AR_25K.shp", 1, {"*": ("Semak/Belukar", 4)}),
+    ("NONAGRIALANG_AR_25K.shp", 1, {"*": ("Rumput/Tanah Kosong", 4)}),
+    ("PEMUKIMAN_AR_25K.shp", 1, {"*": ("Permukiman", 3)}),
+    ("DANAU_AR_25K.shp", 2, {"*": ("Danau/Waduk", 1)}),
+    ("SUNGAI_AR_25K.shp", 2, {"*": ("Sungai", 1)}),
+    ("PASIR_AR_25K.shp", 2, {"*": ("Rumput/Tanah Kosong", 4)}),
+    ("PESISIR_AR_25K.shp", 2, {"*": ("Rumput/Tanah Kosong", 4)}),
+    ("RUNWAY_AR_25K.shp", 2, {"*": ("Bandara", 3)}),
+    ("BANGUNAN_AR_25K.shp", 3, {"*": ("Permukiman", 3)}),
 ]
 
-KLASIFIKASI_CELAH = "Permukiman dan Tempat Kegiatan (Terisi Otomatis)"
-SKOR_CELAH = 2
+KLASIFIKASI_CELAH = "Permukiman"
+SKOR_CELAH = 3
 
 
 # =====================================================================
@@ -930,11 +937,19 @@ class LahanAmanIngestion:
              "rerata_ch_tahunan", "skor_hujan", "easting_x", "northing_y"],
         )
 
-    # ---------- 5. peta 7 daerah kontur curah hujan IDW dari JSON Hari 1 (EPSG:32749) ----------
+    # ---------- 5. peta daerah kontur curah hujan IDW dari GJS_Layer4_CurahHujan_SlemanBantul.geojson (DAY 8) ----------
     def process_curah_hujan_idw(self):
-        print("\n[CURAH HUJAN IDW] Membangun 7 Daerah Poligon Kontur IDW dari JSON Master (EPSG:32749)...")
+        print("\n[CURAH HUJAN IDW] Mengekstrak Poligon Kontur Curah Hujan Asli DAY 8 (EPSG:32749 -> EPSG:4326)...")
         if not self.batas_kabupaten:
             self.process_admin_boundaries()
+        try:
+            gdf_idw = ekstrak_curah_hujan_day8_standar()
+            self.gdf_idw = gdf_idw
+            ekstrak_kerawanan_longsor_day8_standar(gdf_admin_utm=self.gdf_admin, gdf_hujan_utm=gdf_idw)
+            return
+        except Exception as e:
+            print(f"  [!] Fallback ke JSON Master Curah Hujan karena: {e}")
+
         if self.json_ch_day1 is None:
             self.json_ch_day1 = baca_json_curah_hujan_day1()
 

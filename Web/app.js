@@ -88,20 +88,22 @@
   L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 
   // =========================================================================
-  // 3. STATE APLIKASI & PALET WARNA GEOTEKNIK DAY 8
+  // 3. STATE APLIKASI & PALET WARNA ASLI DATA GPKG/GEOJSON (TANPA HALUSINASI)
   // =========================================================================
   const TRIAGE_HEX = {
-    hijau: "#10B981",
-    kuning: "#F59E0B",
-    merah: "#EF4444",
+    hijau: "#2E7D32",
+    hijauStandar: "#66BB6A",
+    kuning: "#FB8C00",
+    kuningGrumosol: "#FFB300",
+    merah: "#D32F2F",
   };
 
   const SCORE_COLORS = {
-    1: "#10B981",
-    2: "#38BDF8",
-    3: "#FACC15",
-    4: "#F97316",
-    5: "#EF4444",
+    1: "#2E7D32",
+    2: "#66BB6A",
+    3: "#FFB300",
+    4: "#FB8C00",
+    5: "#D32F2F",
   };
 
   const SLOPE_COLORS = {
@@ -112,6 +114,15 @@
     5: "#ef4444", // >35° (>70.0%)
   };
 
+  // Palet Warna Asli Curah Hujan sesuai GPKG/GJS_Layer4_CurahHujan_SlemanBantul & Day1_Master_Curah_Hujan (warna_peta_arcmap)
+  const RAINFALL_COLORS = {
+    1: "#1F7A1F", // < 1.500 mm/th (Sangat Rendah | m = 0.30 | Hijau Tua)
+    2: "#66CC00", // 1.500 - 2.000 mm/th (Rendah | m = 0.45 | Hijau Muda / Olive)
+    3: "#FFFF00", // 2.001 - 2.500 mm/th (Sedang | m = 0.60 | Kuning Cerah)
+    4: "#FF8C00", // 2.501 - 3.000 mm/th (Tinggi | m = 0.75 | Oranye)
+    5: "#FF1A00", // > 3.000 mm/th (Sangat Tinggi | m = 0.90 | Merah Menyala)
+  };
+
   const state = {
     filterKab: "ALL",
     filterZona: "ALL",
@@ -120,6 +131,10 @@
     selectedFeature: null,
     selectedTriageHex: TRIAGE_HEX.hijau,
     dusunHighlightGroup: L.layerGroup().addTo(map),
+    kavlingSegmentGroup: L.layerGroup().addTo(map),
+    isDrawingKavling: false,
+    activeKavlingResult: null,
+    segmentLayersById: {},
     adminFeatures: [],
     devFeatures: [],
     areaDevFeatures: [],
@@ -128,8 +143,10 @@
     lerengFeatures: [],
     demnasFeatures: [],
     tutupanFeatures: [],
+    kerawananFeatures: [],
     layers: {
       admin: null,
+      kerawananLongsor: null,
       geologi: null,
       tanah: null,
       idwHujan: null,
@@ -141,6 +158,7 @@
       tutupan: null,
     },
     tutupanLoaded: false,
+    kerawananLoaded: false,
     activeLegendMode: "triase",
   };
 
@@ -202,6 +220,37 @@
   }
 
   /**
+   * Tabel Pemetaan Parameter Properti Fisik Tanah Lokal DIY (Acuan Dasar.xlsx Sheet Internal):
+   * - Grumosol  : gamma_sat = 19.0 kN/m3, z = 2.25 m
+   * - Latosol   : gamma_sat = 18.5 kN/m3, z = 2.25 m
+   * - Mediteran : gamma_sat = 18.5 kN/m3, z = 2.50 m
+   * - Regosol   : gamma_sat = 17.5 kN/m3, z = 1.00 m
+   * - Kambisol  : gamma_sat = 18.0 kN/m3, z = 2.00 m
+   * - Aluvial   : gamma_sat = 18.5 kN/m3, z = 4.00 m
+   * - Default   : gamma_sat = 18.0 kN/m3, z = 2.00 m
+   */
+  const TABEL_PROPERTI_FISIK_TANAH_DIY = [
+    { keys: ["grumosol", "grumusol"], gammaSat: 19.0, zDepth: 2.25 },
+    { keys: ["mediteran"], gammaSat: 18.5, zDepth: 2.50 },
+    { keys: ["latosol"], gammaSat: 18.5, zDepth: 2.25 },
+    { keys: ["regosol"], gammaSat: 17.5, zDepth: 1.00 },
+    { keys: ["kambisol"], gammaSat: 18.0, zDepth: 2.00 },
+    { keys: ["aluvial"], gammaSat: 18.5, zDepth: 4.00 },
+  ];
+
+  function ambilPropertiFisikTanahDiy(namaTanah) {
+    const clean = String(namaTanah || "").trim().toLowerCase();
+    if (clean) {
+      for (const item of TABEL_PROPERTI_FISIK_TANAH_DIY) {
+        if (item.keys.some((k) => clean.includes(k))) {
+          return { gammaSat: item.gammaSat, zDepth: item.zDepth };
+        }
+      }
+    }
+    return { gammaSat: 18.0, zDepth: 2.00 };
+  }
+
+  /**
    * 2. Karakteristik Tanah Penutup / Pedologi (Bobot 15%):
    *    - Skor 5: Grumosol (c′=9.0 kPa, φ′=15°, ekspansif tinggi)
    *    - Skor 4: Latosol & Mediteran (c′=10–11 kPa, φ′=18°–20°, solum tebal >2m)
@@ -210,8 +259,10 @@
    *    - Skor 1: Aluvial (c′=14.0 kPa, dataran datar)
    */
   function evaluasiPedologiDay8(jenisTanahRaw) {
-    const raw = String(jenisTanahRaw || "Regosol").trim();
+    const hasRaw = jenisTanahRaw !== undefined && jenisTanahRaw !== null && String(jenisTanahRaw).trim() !== "";
+    const raw = hasRaw ? String(jenisTanahRaw).trim() : "Regosol";
     const low = raw.toLowerCase();
+    const fisika = ambilPropertiFisikTanahDiy(hasRaw ? raw : "");
 
     if (
       low.includes("grumosol") ||
@@ -229,8 +280,8 @@
           "Tanah lempung hitam berplastisitas tinggi (smektit/montmorilonit); kembang-kerut ekstrem (retak saat kering, mengembang saat basah), rentan rayapan lereng dan risiko retak pondasi.",
         cPrime: 9.0,
         phiPrime: 15.0,
-        gammaSat: 18.0,
-        zDepth: 2.0,
+        gammaSat: 19.0,
+        zDepth: 2.25,
         isExpansive: true,
       };
     }
@@ -242,8 +293,8 @@
         sifatRingkas: "Tanah pelapukan lanjut dengan solum tebal (>2 m), plastisitas sedang–tinggi",
         cPrime: 10.0,
         phiPrime: 18.0,
-        gammaSat: 18.0,
-        zDepth: 2.0,
+        gammaSat: fisika.gammaSat,
+        zDepth: fisika.zDepth,
         isExpansive: false,
       };
     }
@@ -256,7 +307,7 @@
         cPrime: 8.0,
         phiPrime: 30.0,
         gammaSat: 18.0,
-        zDepth: 2.0,
+        zDepth: 2.00,
         isExpansive: false,
       };
     }
@@ -268,8 +319,8 @@
         sifatRingkas: "Endapan lempung-lanau dataran rendah/sungai, topografi datar dengan kohesi cukup",
         cPrime: 14.0,
         phiPrime: 25.0,
-        gammaSat: 18.0,
-        zDepth: 2.0,
+        gammaSat: 18.5,
+        zDepth: 4.00,
         isExpansive: false,
       };
     }
@@ -281,8 +332,8 @@
       sifatRingkas: "Pasir vulkanik lepas/sarang (kohesi rendah), permeabilitas tinggi namun peka gerusan air",
       cPrime: 3.5,
       phiPrime: 36.0,
-      gammaSat: 18.0,
-      zDepth: 2.0,
+      gammaSat: fisika.gammaSat,
+      zDepth: fisika.zDepth,
       isExpansive: false,
     };
   }
@@ -404,80 +455,116 @@
    *    - Skor 2: 1.500–2.000 mm/thn (m = 0.45)
    *    - Skor 1: <1.500 mm/thn (m = 0.30)
    */
-  function evaluasiCurahHujanDay8(chMmInput) {
-    const ch = Number(chMmInput) || 2250;
-    if (ch > 3000) {
-      return { skor: 5, chMm: ch, mRatio: 0.90, kelas: "> 3.000 mm/thn (Sangat Tinggi)" };
+  function evaluasiCurahHujanDay8(chMmInput, skorOverride, rasioMOverride) {
+    const ch = Number(chMmInput) || 2394;
+    const mMap = { 1: 0.30, 2: 0.45, 3: 0.60, 4: 0.75, 5: 0.90 };
+    const kelasMap = {
+      1: "< 1.500 mm/thn (Sangat Rendah)",
+      2: "1.500 – 2.000 mm/thn (Rendah)",
+      3: "2.001 – 2.500 mm/thn (Sedang)",
+      4: "2.501 – 3.000 mm/thn (Tinggi)",
+      5: "> 3.000 mm/thn (Sangat Tinggi)",
+    };
+
+    let skor = 3;
+    if (ch > 3000) skor = 5;
+    else if (ch >= 2501) skor = 4;
+    else if (ch >= 2001) skor = 3;
+    else if (ch >= 1500) skor = 2;
+    else skor = 1;
+
+    const sOvr = Number(skorOverride);
+    if (Number.isFinite(sOvr) && sOvr >= 1 && sOvr <= 5) {
+      skor = Math.round(sOvr);
     }
-    if (ch > 2500) {
-      return { skor: 4, chMm: ch, mRatio: 0.75, kelas: "2.501 – 3.000 mm/thn (Tinggi)" };
-    }
-    if (ch > 2000) {
-      return { skor: 3, chMm: ch, mRatio: 0.60, kelas: "2.001 – 2.500 mm/thn (Sedang)" };
-    }
-    if (ch >= 1500) {
-      return { skor: 2, chMm: ch, mRatio: 0.45, kelas: "1.500 – 2.000 mm/thn (Rendah–Sedang)" };
-    }
-    return { skor: 1, chMm: ch, mRatio: 0.30, kelas: "< 1.500 mm/thn (Rendah)" };
+
+    const mOvr = Number(rasioMOverride);
+    const mRatio = Number.isFinite(mOvr) && mOvr > 0 && mOvr <= 1.0 ? mOvr : mMap[skor] || 0.60;
+
+    return {
+      skor,
+      chMm: ch,
+      mRatio,
+      kelas: kelasMap[skor] || kelasMap[3],
+    };
   }
 
   /**
-   * 5. Tutupan Lahan (Bobot 15%):
-   *    - Skor 5: Lahan terbuka, tegalan, sawah lereng miring
-   *    - Skor 4: Semak belukar, rumput
-   *    - Skor 3: Permukiman, jaringan jalan
-   *    - Skor 2: Perkebunan, kebun campuran
-   *    - Skor 1: Hutan lindung, tubuh air
+   * 5. Tutupan Lahan RBI (Bobot 10% sesuai GPKG/GJS Layer5_Tata Guna Lahan):
+   *    - Skor 5 (#D32F2F): Sawah Irigasi, Sawah Tadah Hujan, Tegalan/Ladang (Tanpa Akar Dalam & Infiltrasi Tinggi - Sangat Rawan)
+   *    - Skor 4 (#FB8C00): Semak/Belukar, Rumput/Tanah Kosong (Akar Dangkal <0.3m & Penahan Air Lemah - Rawan)
+   *    - Skor 3 (#FFB300): Permukiman, Bandara, Industri, Emplasemen, Makam, Candi, Lapangan Olah Raga (Beban Konstruksi/Surcharge Lereng - Sedang)
+   *    - Skor 2 (#66BB6A): Kebun (Kohesi Akar Pohon Sedang 2-5 kPa - Rendah)
+   *    - Skor 1 (#2E7D32 / #0284C7): Hutan Lindung, Hutan Konservasi, Hutan Produksi, Sungai, Danau/Waduk, Kolam Air Tawar, Tambak (Perakaran Dalam / Badan Air Datar - Aman)
    */
-  function evaluasiTutupanLahanDay8(tutupanRaw, lerengDerajat) {
+  function evaluasiTutupanLahanDay8(tutupanRaw, _lerengDerajat) {
     const raw = String(tutupanRaw || "Permukiman").trim();
     const low = raw.toLowerCase();
-    const deg = Number(lerengDerajat) || 4.5;
 
     if (
-      low.includes("terbuka") ||
+      low.includes("sawah") ||
       low.includes("tegalan") ||
       low.includes("ladang") ||
-      (low.includes("sawah") && deg > 8.0)
+      low.includes("terbuka") ||
+      low.includes("pasir")
     ) {
       return {
         skor: 5,
         nama: raw,
-        kategori: "Lahan Terbuka / Tegalan / Sawah Lereng Miring",
-      };
-    }
-    if (low.includes("semak") || low.includes("rumput") || low.includes("belukar")) {
-      return {
-        skor: 4,
-        nama: raw,
-        kategori: "Semak Belukar & Padang Rumput",
+        kategori: `${raw} (Tanpa Akar Dalam & Infiltrasi Tinggi - Sangat Rawan)`,
+        warnaHex: "#D32F2F",
       };
     }
     if (
-      low.includes("permukiman") ||
-      low.includes("pemukiman") ||
-      low.includes("jalan") ||
-      low.includes("kota") ||
-      low.includes("kegiatan") ||
-      low.includes("bandara")
+      low.includes("semak") ||
+      low.includes("belukar") ||
+      low.includes("rumput") ||
+      low.includes("tanah kosong") ||
+      low.includes("alang")
     ) {
       return {
-        skor: 3,
+        skor: 4,
         nama: raw,
-        kategori: "Permukiman & Jaringan Jalan",
+        kategori: `${raw} (Akar Dangkal <0.3m & Penahan Air Lemah - Rawan)`,
+        warnaHex: "#FB8C00",
       };
     }
-    if (low.includes("perkebunan") || low.includes("kebun") || low.includes("sawah")) {
+    if (low.includes("perkebunan") || low.includes("kebun") || low.includes("campur")) {
       return {
         skor: 2,
         nama: raw,
-        kategori: low.includes("sawah") ? "Persawahan Dataran Terkelola" : "Perkebunan & Kebun Campuran",
+        kategori: `${raw} (Kohesi Akar Pohon Sedang 2-5 kPa - Rendah)`,
+        warnaHex: "#66BB6A",
+      };
+    }
+    if (
+      low.includes("hutan") ||
+      low.includes("sungai") ||
+      low.includes("danau") ||
+      low.includes("waduk") ||
+      low.includes("kolam") ||
+      low.includes("tambak") ||
+      low.includes("air")
+    ) {
+      const isWater =
+        low.includes("sungai") ||
+        low.includes("danau") ||
+        low.includes("waduk") ||
+        low.includes("kolam") ||
+        low.includes("tambak") ||
+        low.includes("air");
+      return {
+        skor: 1,
+        nama: raw,
+        kategori: `${raw} (Perakaran Dalam / Badan Air Datar - Aman)`,
+        warnaHex: isWater ? "#0284C7" : "#2E7D32",
       };
     }
     return {
-      skor: 1,
+      skor: 3,
       nama: raw,
-      kategori: "Hutan Lindung / Vegetasi Rapat / Tubuh Air",
+      kategori: `${raw} (Beban Konstruksi/Surcharge Lereng - Sedang)`,
+      warnaHex: "#FFB300",
     };
   }
 
@@ -485,25 +572,25 @@
    * Estimasi Faktor Keamanan Murni (Factor of Safety / FS Terzaghi Tanpa Manipulasi):
    * FS = [c' + (γ_sat · z - m · γ_w · z) · cos²(β) · tan(φ')] / [γ_sat · z · sin(β) · cos(β)]
    */
-  function hitungFsTerzaghiSilent(pedologi, hujan, lerengDerajat) {
+  function hitungFsTerzaghiSilent(pedologi, hujan, lerengDerajat, namaTanah) {
     const gammaW = 9.81; // kN/m3
-    const gammaSat = 18.0; // kN/m3
-    const z = 2.0; // m
-    const m = Number(hujan.mRatio) || 0.60;
-    const cPrime = Number(pedologi.cPrime) || 8.0;
+    const tanahInput = namaTanah !== undefined ? namaTanah : pedologi && pedologi.nama;
+    const { gammaSat, zDepth } = ambilPropertiFisikTanahDiy(tanahInput);
+    const m = Number(hujan && hujan.mRatio) || 0.60;
+    const cPrime = Number(pedologi && pedologi.cPrime) || 8.0;
 
     // Gunakan sudut kemiringan lereng asli dengan proteksi β_min = 1.0° pada tanah mutlak datar
     const betaEffDeg = Math.max(1.0, Number(lerengDerajat) || 1.0);
     const betaRad = (betaEffDeg * Math.PI) / 180;
-    const phiRad = ((Number(pedologi.phiPrime) || 25.0) * Math.PI) / 180;
+    const phiRad = ((Number(pedologi && pedologi.phiPrime) || 25.0) * Math.PI) / 180;
 
     const cosB = Math.cos(betaRad);
     const sinB = Math.sin(betaRad);
-    const normalEff = (gammaSat * z - m * gammaW * z) * (cosB * cosB);
-    const numerator = cPrime + normalEff * Math.tan(phiRad);
-    const denominator = gammaSat * z * sinB * cosB;
+    const normalEff = (gammaSat * zDepth - m * gammaW * zDepth) * (cosB * cosB);
+    const shearRes = cPrime + normalEff * Math.tan(phiRad);
+    const driving = gammaSat * zDepth * sinB * cosB;
 
-    const fsRaw = numerator / denominator;
+    const fsRaw = shearRes / driving;
     const fsVal = Number(fsRaw.toFixed(2));
 
     let status = "Stabil";
@@ -522,6 +609,8 @@
 
     return {
       fs: fsVal,
+      gammaSat,
+      zDepth,
       status,
       statusKode,
       keterangan,
@@ -529,76 +618,112 @@
   }
 
   /**
-   * Perhitungan Skor Akhir & Nilai Triase Warna DAY 8 (Silent Background):
-   * - Zona Hijau (Aman / Risiko Rendah): Skor Akhir < 2.20 atau lereng datar (0°–8°) tanpa lempung ekspansif. Hex: #10B981
-   * - Zona Kuning (Waspada / Perlu Mitigasi & RAB): Skor Akhir 2.20 – 3.40. Hex: #F59E0B
-   * - Zona Merah (Bahaya Kritis / Non-Buildable): Skor Akhir > 3.40. Hex: #EF4444
+   * Perhitungan Skor Akhir & Klasifikasi Skoring Asli GPKG/GeoJSON Peta_Kerawanan_Longsor_SlemanBantul_Final:
+   * Rumus GPKG: skor_akhir = 0.30*skor_lereng + 0.25*skor_tanah + 0.20*skor_batuan + 0.15*skor_hujan + 0.10*skor_lahan
+   * 5 Kelas Skoring & Warna Asli Tabel 5.2 Hari 7:
+   * - ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil): #2E7D32 (skor_lereng == 1 non-Grumusol)
+   * - ZONA HIJAU (Risiko Rendah - Konstruksi Standar): #66BB6A (skor_akhir < 2.20 pada skor_lereng > 1)
+   * - ZONA KUNING (Datar - Waspada Lempung Ekspansif / Pondasi): #FFB300 (skor_lereng == 1 & Grumusol)
+   * - ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud & RAB): #FB8C00 (skor_akhir 2.20 s.d. 3.40)
+   * - ZONA MERAH (Risiko Tinggi - Rawan Longsor & Wajib Uji Sondir): #D32F2F (skor_akhir > 3.40 atau skor_lereng >= 5)
    */
-  function evaluasiTriaseDay8(lereng, pedologi, litologi, hujan, tutupan) {
+  function evaluasiTriaseDay8(lereng, pedologi, litologi, hujan, tutupan, namaTanah) {
     const skorAkhir = Number(
       (
         0.30 * lereng.skor +
-        0.15 * pedologi.skor +
+        0.25 * pedologi.skor +
         0.20 * litologi.skor +
-        0.20 * hujan.skor +
-        0.15 * tutupan.skor
+        0.15 * hujan.skor +
+        0.10 * tutupan.skor
       ).toFixed(2)
     );
 
-    const fsInfo = hitungFsTerzaghiSilent(pedologi, hujan, lereng.derajat);
+    const fsInfo = hitungFsTerzaghiSilent(
+      pedologi,
+      hujan,
+      lereng.derajat,
+      namaTanah !== undefined ? namaTanah : pedologi && pedologi.nama
+    );
 
-    if (skorAkhir > 3.40) {
-      if (fsInfo.fs >= 1.50) {
-        if (lereng.derajat <= 8.0) {
+    // 1. Lereng datar (0°–8° / skor_lereng = 1): Hijau Tua (#2E7D32) bila bukan Grumosol, Kuning Amber (#FFB300) bila Grumosol
+    if (lereng.derajat <= 8.0) {
+      if (pedologi.isExpansive) {
+        if (fsInfo.fs >= 1.50) {
           fsInfo.keterangan =
-            "Kerawanan makro tinggi akibat faktor geologi/hujan, namun kestabilan lereng lokal stabil mutlak karena topografi datar.";
-        } else {
-          fsInfo.keterangan =
-            "Kestabilan geser lereng lokal terhitung stabil (FS ≥ 1.50), namun tetap berada pada zona waspada/kritis makro akibat faktor formasi geologi/litologi atau tutupan lahan.";
+            "Kestabilan lereng lokal stabil karena topografi datar, namun tanah Grumosol ekspansif wajib perkuatan pondasi & drainase kedap.";
         }
+        const zonaTriase = "ZONA KUNING (Datar - Waspada Lempung Ekspansif / Pondasi)";
+        return {
+          kode: "kuning",
+          hex: TRIAGE_HEX.kuningGrumosol,
+          namaZona: "Zona Kuning",
+          zonaTriase,
+          badge: `SKOR ${skorAkhir.toFixed(2)} — ${zonaTriase}`,
+          ringkasanStatus: zonaTriase,
+          skorAkhir,
+          fsInfo,
+        };
       }
-      const isSangatTerjal = lereng.skor >= 5 || lereng.derajat > 35.0;
-      return {
-        kode: "merah",
-        hex: TRIAGE_HEX.merah,
-        namaZona: "Zona Merah",
-        badge: "ZONA MERAH (BAHAYA KRITIS)",
-        ringkasanStatus: isSangatTerjal
-          ? "Bahaya Kritis / Non-Buildable — Lereng Sangat Terjal (>35°)"
-          : "Zona Kerawanan Geologi Tinggi — Perlu Penyelidikan Geoteknik Rinci",
-        skorAkhir,
-        fsInfo,
-      };
-    }
-
-    if (skorAkhir < 2.20 || (lereng.derajat <= 8.0 && !pedologi.isExpansive)) {
+      const zonaTriase = "ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil)";
       return {
         kode: "hijau",
         hex: TRIAGE_HEX.hijau,
         namaZona: "Zona Hijau",
-        badge: "ZONA HIJAU (AMAN)",
-        ringkasanStatus: "Aman / Risiko Geoteknik Rendah — Lahan Stabil",
+        zonaTriase,
+        badge: `SKOR ${skorAkhir.toFixed(2)} — ${zonaTriase}`,
+        ringkasanStatus: zonaTriase,
         skorAkhir,
         fsInfo,
       };
     }
 
-    if (fsInfo.fs >= 1.50) {
-      if (lereng.derajat <= 8.0) {
-        fsInfo.keterangan =
-          "Kerawanan makro menengah akibat faktor geologi/tanah/hujan, namun kestabilan lereng lokal stabil mutlak karena topografi datar.";
-      } else {
+    // 2. Zona Merah (#D32F2F): Skor Akhir > 3.40 atau lereng terjal kritis (>35°)
+    if (skorAkhir > 3.40 || lereng.derajat > 35.0 || lereng.skor >= 5) {
+      if (fsInfo.fs >= 1.50) {
         fsInfo.keterangan =
           "Kestabilan geser lereng lokal terhitung stabil (FS ≥ 1.50), namun tetap berada pada zona waspada/kritis makro akibat faktor formasi geologi/litologi atau tutupan lahan.";
       }
+      const zonaTriase = "ZONA MERAH (Risiko Tinggi - Rawan Longsor & Wajib Uji Sondir)";
+      return {
+        kode: "merah",
+        hex: TRIAGE_HEX.merah,
+        namaZona: "Zona Merah",
+        zonaTriase,
+        badge: `SKOR ${skorAkhir.toFixed(2)} — ${zonaTriase}`,
+        ringkasanStatus: zonaTriase,
+        skorAkhir,
+        fsInfo,
+      };
     }
 
+    // 3. Zona Hijau Konstruksi Standar (#66BB6A): Skor Akhir < 2.20
+    if (skorAkhir < 2.20) {
+      const zonaTriase = "ZONA HIJAU (Risiko Rendah - Konstruksi Standar)";
+      return {
+        kode: "hijau",
+        hex: TRIAGE_HEX.hijauStandar,
+        namaZona: "Zona Hijau",
+        zonaTriase,
+        badge: `SKOR ${skorAkhir.toFixed(2)} — ${zonaTriase}`,
+        ringkasanStatus: zonaTriase,
+        skorAkhir,
+        fsInfo,
+      };
+    }
+
+    // 4. Zona Kuning (#FB8C00): Skor Akhir 2.20 s.d. 3.40
+    if (fsInfo.fs >= 1.50) {
+      fsInfo.keterangan =
+        "Kestabilan geser lereng lokal terhitung stabil (FS ≥ 1.50), namun tetap berada pada zona waspada/kritis makro akibat faktor formasi geologi/litologi atau tutupan lahan.";
+    }
+    const zonaTriase = "ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud & RAB)";
     return {
       kode: "kuning",
       hex: TRIAGE_HEX.kuning,
       namaZona: "Zona Kuning",
-      badge: "ZONA KUNING (PERLU MITIGASI)",
-      ringkasanStatus: "Waspada / Perlu Rekayasa Mitigasi Fondasi & Drainase",
+      zonaTriase,
+      badge: `SKOR ${skorAkhir.toFixed(2)} — ${zonaTriase}`,
+      ringkasanStatus: zonaTriase,
       skorAkhir,
       fsInfo,
     };
@@ -846,11 +971,14 @@
     const tanahPolyFeat = state.tanahFeatures && state.tanahFeatures.length
       ? cariFiturPoligonPadaTitik(easting, northing, state.tanahFeatures, wgsLatLng.lng, wgsLatLng.lat)
       : null;
-    const tutupanPolyFeat = state.tutupanFeatures.length
+    const tutupanPolyFeat = state.tutupanFeatures && state.tutupanFeatures.length
       ? cariFiturPoligonPadaTitik(easting, northing, state.tutupanFeatures, wgsLatLng.lng, wgsLatLng.lat)
       : null;
+    const kerawananPolyFeat = state.kerawananFeatures && state.kerawananFeatures.length
+      ? cariFiturPoligonPadaTitik(easting, northing, state.kerawananFeatures, wgsLatLng.lng, wgsLatLng.lat)
+      : null;
 
-    // Gunakan sudut kemiringan lereng asli kontinu hasil ekstraksi piksel DEMNAS (tanpa midpoint override)
+    // 1. Kemiringan Lereng dari DEMNAS kontinu + Layer1_Lereng_Geoteknik_Derajat
     const lerengDerajat =
       mergedProps.lereng_derajat ??
       mergedProps.lereng_area_derajat ??
@@ -861,27 +989,39 @@
       adminProps.lereng_persen;
 
     const lereng = evaluasiKemiringanDay8(lerengDerajat, lerengPersen);
-    // Skor lereng 1 s.d. 5 dari poligon lereng hanya untuk bobot kerawanan makro, TIDAK menimpa derajat/persen asli
     if (slopePolyFeat && slopePolyFeat.properties) {
       const sPoly = Number(slopePolyFeat.properties.skor || slopePolyFeat.properties.skor_leren || slopePolyFeat.properties.skor_lereng);
       if (sPoly >= 1 && sPoly <= 5) {
         lereng.skor = sPoly;
       }
+    } else if (kerawananPolyFeat && kerawananPolyFeat.properties) {
+      const sKrL = Number(kerawananPolyFeat.properties.skor_lereng);
+      if (sKrL >= 1 && sKrL <= 5) {
+        lereng.skor = sKrL;
+      }
     }
 
-    // Pedologi / Karakteristik Tanah
+    // 2. Pedologi / Karakteristik Tanah dari Layer2_JenisTanah
     const jenisTanahStr =
       (tanahPolyFeat && tanahPolyFeat.properties && tanahPolyFeat.properties.jns_tnh) ||
+      (kerawananPolyFeat && kerawananPolyFeat.properties && kerawananPolyFeat.properties.ket_tanah) ||
       mergedProps.jenis_tanah ||
       adminProps.jenis_tanah ||
       "Regosol Vulkanik";
     const pedologi = evaluasiPedologiDay8(jenisTanahStr);
+    if (tanahPolyFeat && tanahPolyFeat.properties) {
+      const sTanah = Number(tanahPolyFeat.properties["skor tanah"] || tanahPolyFeat.properties.skor_tanah);
+      if (sTanah >= 1 && sTanah <= 5) pedologi.skor = sTanah;
+      if (Number(tanahPolyFeat.properties.c_kpa) > 0) pedologi.cPrime = Number(tanahPolyFeat.properties.c_kpa);
+      if (Number(tanahPolyFeat.properties.phi_deg) > 0) pedologi.phiPrime = Number(tanahPolyFeat.properties.phi_deg);
+    }
 
-    // Litologi / Formasi Batuan
+    // 3. Litologi / Formasi Batuan dari Layer3_Geologi
     const formasiStr =
       (geologiPolyFeat &&
         geologiPolyFeat.properties &&
         `${geologiPolyFeat.properties.NAME || ""} (${geologiPolyFeat.properties.SYMBOLS || ""})`) ||
+      (kerawananPolyFeat && kerawananPolyFeat.properties && kerawananPolyFeat.properties.ket_batuan) ||
       mergedProps.formasi_batuan ||
       adminProps.formasi_batuan ||
       "Formasi Gunungapi Merapi Muda (Qmi)";
@@ -891,31 +1031,44 @@
       adminProps.litologi_penyusun ||
       "";
     const litologi = evaluasiLitologiDay8(formasiStr, litologiStr);
+    if (geologiPolyFeat && geologiPolyFeat.properties) {
+      const sGeo = Number(geologiPolyFeat.properties.skor_batuan);
+      if (sGeo >= 1 && sGeo <= 5) litologi.skor = sGeo;
+    }
 
-    // Curah Hujan IDW
+    // 4. Curah Hujan IDW dari clean_curah_hujan_idw.geojson (curah_hujan_mm, skor_hujan, rasio_m)
     let chIdwMm =
+      (idwPolyFeat && idwPolyFeat.properties && (idwPolyFeat.properties.curah_hujan_mm ?? idwPolyFeat.properties.ch_idw_rerata_mm)) ??
+      mergedProps.curah_hujan_mm ??
       mergedProps.ch_idw_mm ??
       mergedProps.ch_idw_titik_mm ??
       mergedProps.ch_idw_area_mm ??
       mergedProps.rerata_ch_tahunan ??
       adminProps.ch_idw_mm ??
-      2250;
-    if (idwPolyFeat && idwPolyFeat.properties && idwPolyFeat.properties.ch_idw_rerata_mm && !mergedProps.ch_idw_mm) {
-      chIdwMm = idwPolyFeat.properties.ch_idw_rerata_mm;
-    }
-    const hujan = evaluasiCurahHujanDay8(chIdwMm);
+      2394;
+    const skorHujanOvr =
+      (idwPolyFeat && idwPolyFeat.properties && (idwPolyFeat.properties.skor_hujan ?? idwPolyFeat.properties.skor)) ??
+      mergedProps.skor_hujan;
+    const rasioMOvr =
+      (idwPolyFeat && idwPolyFeat.properties && idwPolyFeat.properties.rasio_m) ??
+      mergedProps.rasio_m;
+    const hujan = evaluasiCurahHujanDay8(chIdwMm, skorHujanOvr, rasioMOvr);
 
-    // Tutupan Lahan
+    // 5. Tutupan Lahan dari Layer5_TutupanLahan / clean_tutupan_lahan_diy.geojson
     const tutupanStr =
       (tutupanPolyFeat && tutupanPolyFeat.properties && tutupanPolyFeat.properties.klasifikasi) ||
+      (kerawananPolyFeat && kerawananPolyFeat.properties && kerawananPolyFeat.properties.ket_lahan) ||
       mergedProps.tutupan_dominan ||
       mergedProps.tutupan_peta ||
       adminProps.tutupan_dominan ||
       "Permukiman";
     const tutupan = evaluasiTutupanLahanDay8(tutupanStr, lereng.derajat);
+    if (kerawananPolyFeat && kerawananPolyFeat.properties && Number(kerawananPolyFeat.properties.skor_lahan) >= 1) {
+      tutupan.skor = Number(kerawananPolyFeat.properties.skor_lahan);
+    }
 
     // Evaluasi Triase & FS Terzaghi (Silent)
-    const triase = evaluasiTriaseDay8(lereng, pedologi, litologi, hujan, tutupan);
+    const triase = evaluasiTriaseDay8(lereng, pedologi, litologi, hujan, tutupan, jenisTanahStr || pedologi.nama);
 
     const kalurahan = mergedProps.kalurahan || adminProps.kalurahan || "-";
     const kapanewon = mergedProps.kapanewon || adminProps.kapanewon || "-";
@@ -1121,8 +1274,13 @@
           Siap Menginspeksi Titik &amp; Dusun
         </h2>
         <p style="font-size:12px;color:#475569;line-height:1.5;margin-bottom:12px;">
-          Peta ditampilkan dalam kondisi bersih (<b>Clean Map View</b>). Klik sembarang titik di peta atau cari nama <b>Dusun / Padukuhan</b>, <b>Kalurahan</b>, atau <b>Kapanewon</b> untuk menampilkan sorotan zona triase dan rekomendasi geoteknik.
+          Peta ditampilkan dalam kondisi bersih (<b>Clean Map View</b>). Klik sembarang titik di peta, cari nama <b>Dusun / Padukuhan</b>, atau gunakan fitur <b>Gambar Poligon Kavling</b> untuk memotong segmen zona triase &amp; menghitung statistik raster lereng (&beta;&deg;) serta beda tinggi (H).
         </p>
+        <div style="margin-bottom:10px;">
+          <button type="button" class="btn btn-draw-kavling" id="btn-empty-draw-kavling" style="width:100%;justify-content:center;padding:8px 12px;">
+            ✏️ Gambar Poligon Kavling (Analisis Segmen)
+          </button>
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
           <button type="button" class="btn quick-sample-btn" data-dusun="Dusun Kinahrejo" data-lat="-7.5994" data-lon="110.4478">
             🌋 Dusun Kinahrejo
@@ -1146,6 +1304,13 @@
         map.flyTo([lat, lon], 14.5, { duration: 0.8 });
       });
     });
+
+    const btnEmptyDraw = document.getElementById("btn-empty-draw-kavling");
+    if (btnEmptyDraw) {
+      btnEmptyDraw.addEventListener("click", () => {
+        aktifkanModeGambarKavling();
+      });
+    }
   }
 
   function renderInspektor(info) {
@@ -1158,10 +1323,10 @@
     const fsBarPct = Math.min(100, Math.max(12, (fsInfo.fs / 2.5) * 100));
     const fsColor =
       fsInfo.statusKode === "stabil"
-        ? "#10B981"
+        ? "#2E7D32"
         : fsInfo.statusKode === "rawan"
-        ? "#F59E0B"
-        : "#EF4444";
+        ? "#FB8C00"
+        : "#D32F2F";
 
     const labelDusun =
       info.namaDusun &&
@@ -1170,12 +1335,25 @@
         ? info.namaDusun
         : cariDusunTerdekatLokal(info.latWgs84, info.lonWgs84, info.kalurahan) || `Dusun ${info.kalurahan}`;
 
+    const skorAkhirVal = Number(triase.skorAkhir || 2.0);
+    const zonaTriaseFull =
+      triase.zonaTriase ||
+      (triase.kode === "merah"
+        ? "ZONA MERAH (Risiko Tinggi - Rawan Longsor & Wajib Uji Sondir)"
+        : triase.kode === "kuning"
+        ? "ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud & RAB)"
+        : "ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil)");
+
     panel.innerHTML = `
-      <!-- 1. HERO CARD: LABEL WILAYAH LENGKAP & BADGE STATUS TRIASE -->
+      <!-- 1. HERO CARD: LABEL WILAYAH LENGKAP & BADGE SKORING KERAWANAN -->
       <div class="triage-hero-card ${triase.kode}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span class="triage-badge-pill ${triase.kode}">${triase.badge}</span>
+          <span class="triage-badge-pill ${triase.kode}" style="background:${triase.hex};color:#fff;">SKOR AKHIR: ${formatAngka(skorAkhirVal, 2)} / 5,00</span>
           <span style="font-size:10.5px;font-weight:700;opacity:0.85;">Elevasi ±${formatAngka(info.elevasiMdpl, 1)} mdpl</span>
+        </div>
+
+        <div style="margin-top:4px;font-size:11px;font-weight:700;color:#0f172a;">
+          ${zonaTriaseFull}
         </div>
 
         <div>
@@ -1195,14 +1373,14 @@
         </div>
       </div>
 
-      <!-- 2. INDIKATOR KESTABILAN LERENG (FS) -->
+      <!-- 2. INDIKATOR KESTABILAN LERENG (FS) & MATRIKS SKORING GPKG -->
       <div class="fs-indicator-card">
         <div class="section-title" style="margin-bottom:6px;">
-          <span>🛡️ Indikator Kestabilan Lereng (FS)</span>
+          <span>🛡️ Indikator Kestabilan Lereng (FS) &amp; Skoring GPKG</span>
         </div>
         <div class="fs-header-row">
           <div>
-            <span style="font-size:11px;color:#64748b;display:block;">Faktor Keamanan Lereng (FS)</span>
+            <span style="font-size:11px;color:#64748b;display:block;">Faktor Keamanan Lereng (FS) | Skor Akhir: <b>${formatAngka(skorAkhirVal, 2)}</b></span>
             <span class="fs-value-num" style="color:${fsColor};">${formatAngka(fsInfo.fs, 2)}</span>
           </div>
           <span class="fs-status-chip ${fsInfo.statusKode}">${fsInfo.status}</span>
@@ -1213,18 +1391,25 @@
         <div style="font-size:11px;color:#475569;margin-top:6px;line-height:1.4;">
           ${fsInfo.keterangan}
         </div>
+        <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #cbd5e1;font-size:10.5px;color:#334155;display:flex;flex-wrap:wrap;gap:6px;">
+          <span>⛰️ Skor Lereng (30%): <b>${lereng.skor}</b></span>
+          <span>• 🌱 Skor Tanah (25%): <b>${pedologi.skor}</b></span>
+          <span>• 🪨 Skor Batuan (20%): <b>${litologi.skor}</b></span>
+          <span>• 🌧️ Skor Hujan (15%): <b>${hujan.skor}</b></span>
+          <span>• 🏡 Skor Lahan (10%): <b>${tutupan.skor}</b></span>
+        </div>
       </div>
 
       <!-- 3. RINGKASAN KONDISI LAPANGAN -->
       <div class="section-card">
         <div class="section-title">
-          <span>📋 Ringkasan Kondisi Lapangan</span>
+          <span>📋 Ringkasan Kondisi Lapangan &amp; Skoring</span>
         </div>
         <div class="field-summary-list">
           <div class="field-row">
             <div class="field-icon">⛰️</div>
             <div class="field-content">
-              <div class="field-label">Kemiringan Lereng</div>
+              <div class="field-label">Kemiringan Lereng (Skor ${lereng.skor} • Bobot 30%)</div>
               <div class="field-val">${formatAngka(lereng.derajat, 2)}° (${formatAngka(lereng.persen, 2)}%)</div>
               <div class="field-sub">${lereng.kelas}</div>
             </div>
@@ -1233,7 +1418,7 @@
           <div class="field-row">
             <div class="field-icon">🌱</div>
             <div class="field-content">
-              <div class="field-label">Karakteristik Tanah (Pedologi)</div>
+              <div class="field-label">Karakteristik Tanah / Pedologi (Skor ${pedologi.skor} • Bobot 25%)</div>
               <div class="field-val">${pedologi.nama}</div>
               <div class="field-sub">${pedologi.sifatRingkas}</div>
             </div>
@@ -1242,7 +1427,7 @@
           <div class="field-row">
             <div class="field-icon">🪨</div>
             <div class="field-content">
-              <div class="field-label">Jenis Batuan / Formasi Geologi</div>
+              <div class="field-label">Jenis Batuan / Formasi Geologi (Skor ${litologi.skor} • Bobot 20%)</div>
               <div class="field-val">${litologi.nama}</div>
               <div class="field-sub">${litologi.litologi}</div>
             </div>
@@ -1251,16 +1436,16 @@
           <div class="field-row">
             <div class="field-icon">🌧️</div>
             <div class="field-content">
-              <div class="field-label">Estimasi Curah Hujan Tahunan</div>
+              <div class="field-label">Curah Hujan Tahunan (Skor ${hujan.skor} • Bobot 15%)</div>
               <div class="field-val">${formatAngka(hujan.chMm, 0)} mm/tahun</div>
-              <div class="field-sub">Intensitas: ${hujan.kelas}</div>
+              <div class="field-sub">Intensitas: ${hujan.kelas} | Rasio Kejenuhan m: ${formatAngka(hujan.mRatio, 2)}</div>
             </div>
           </div>
 
           <div class="field-row">
             <div class="field-icon">🏡</div>
             <div class="field-content">
-              <div class="field-label">Tutupan Lahan</div>
+              <div class="field-label">Tutupan Lahan (Skor ${tutupan.skor} • Bobot 10%)</div>
               <div class="field-val">${tutupan.nama}</div>
               <div class="field-sub">${tutupan.kategori}</div>
             </div>
@@ -1304,16 +1489,16 @@
   function buatPopupRingkas(info) {
     const { triase, lereng, pedologi } = info;
     return `
-      <div style="min-width:240px;">
+      <div style="min-width:250px;">
         <div style="margin-bottom:4px;">
-          <span class="triage-badge-pill ${triase.kode}" style="font-size:9.5px;padding:2px 8px;">${triase.badge}</span>
+          <span class="triage-badge-pill ${triase.kode}" style="font-size:9.5px;padding:2px 8px;background:${triase.hex};color:#fff;">${triase.badge}</span>
         </div>
         <div class="popup-title" id="popup-dusun-title">${info.namaDusun}</div>
         <div class="popup-sub">Kal. ${info.kalurahan}, Kec. ${info.kapanewon}, ${info.kabupaten}</div>
         <div class="popup-grid">
           <div class="popup-cell">
-            <span style="color:#64748b;font-size:10px;display:block;">Kemiringan Lereng</span>
-            <b>${formatAngka(lereng.derajat, 1)}° (${formatAngka(lereng.persen, 1)}%)</b>
+            <span style="color:#64748b;font-size:10px;display:block;">Skor Akhir &amp; Lereng</span>
+            <b>Skor ${formatAngka(triase.skorAkhir, 2)} | ${formatAngka(lereng.derajat, 1)}° (${formatAngka(lereng.persen, 1)}%)</b>
           </div>
           <div class="popup-cell">
             <span style="color:#64748b;font-size:10px;display:block;">Kestabilan (FS)</span>
@@ -1396,22 +1581,39 @@
                 : 1;
             info.pedologi.nama = bData.kondisi_lapangan.jenis_tanah || info.pedologi.nama;
             info.pedologi.sifatRingkas = bData.kondisi_lapangan.ket_tanah || info.pedologi.sifatRingkas;
+            if (bData.kondisi_lapangan.c_kpa !== undefined) info.pedologi.cPrime = Number(bData.kondisi_lapangan.c_kpa);
+            if (bData.kondisi_lapangan.phi_deg !== undefined) info.pedologi.phiPrime = Number(bData.kondisi_lapangan.phi_deg);
+            if (bData.kondisi_lapangan.gamma_sat !== undefined) info.pedologi.gammaSat = Number(bData.kondisi_lapangan.gamma_sat);
+            if (bData.kondisi_lapangan.z_depth !== undefined) info.pedologi.zDepth = Number(bData.kondisi_lapangan.z_depth);
             info.litologi.nama = bData.kondisi_lapangan.formasi_batuan || info.litologi.nama;
             info.litologi.litologi = bData.kondisi_lapangan.ket_batuan || info.litologi.litologi;
             info.hujan.chMm = Number(bData.kondisi_lapangan.curah_hujan_mm ?? info.hujan.chMm);
+            if (bData.kondisi_lapangan.skor_hujan !== undefined) info.hujan.skor = Number(bData.kondisi_lapangan.skor_hujan);
+            if (bData.kondisi_lapangan.rasio_m !== undefined) info.hujan.mRatio = Number(bData.kondisi_lapangan.rasio_m);
             info.hujan.kelas = bData.kondisi_lapangan.kelas_hujan || info.hujan.kelas;
             info.tutupan.nama = bData.kondisi_lapangan.tutupan_lahan || info.tutupan.nama;
             info.tutupan.kategori = bData.kondisi_lapangan.ket_tutupan || info.tutupan.kategori;
+          }
+          if (bData.skor_internal && bData.skor_internal.skor_akhir !== undefined) {
+            info.triase.skorAkhir = Number(bData.skor_internal.skor_akhir);
+            if (bData.skor_internal.skor_lereng !== undefined) info.lereng.skor = Number(bData.skor_internal.skor_lereng);
+            if (bData.skor_internal.skor_tanah !== undefined) info.pedologi.skor = Number(bData.skor_internal.skor_tanah);
+            if (bData.skor_internal.skor_batuan !== undefined) info.litologi.skor = Number(bData.skor_internal.skor_batuan);
+            if (bData.skor_internal.skor_hujan !== undefined) info.hujan.skor = Number(bData.skor_internal.skor_hujan);
+            if (bData.skor_internal.skor_tutupan !== undefined) info.tutupan.skor = Number(bData.skor_internal.skor_tutupan);
           }
 
           const zName = String(bData.triase.zona || "Zona Hijau");
           const zKode = zName.includes("Merah") ? "merah" : zName.includes("Kuning") ? "kuning" : "hijau";
           info.triase.kode = zKode;
           info.triase.namaZona = zName;
+          info.triase.zonaTriase = bData.triase.zona_triase || info.triase.zonaTriase;
           info.triase.badge = bData.triase.badge || info.triase.badge;
           info.triase.hex = bData.triase.warna_hex || info.triase.hex;
           if (bData.triase.fs !== undefined) {
             info.triase.fsInfo.fs = Number(bData.triase.fs);
+            if (bData.triase.gamma_sat !== undefined) info.triase.fsInfo.gammaSat = Number(bData.triase.gamma_sat);
+            if (bData.triase.z_depth !== undefined) info.triase.fsInfo.zDepth = Number(bData.triase.z_depth);
             const fLbl = String(bData.triase.fs_label || "STABIL");
             info.triase.fsInfo.status = fLbl === "STABIL" ? "Stabil" : fLbl === "RAWAN RAYAPAN" ? "Rawan Rayapan" : "Labil";
             info.triase.fsInfo.statusKode = fLbl === "STABIL" ? "stabil" : fLbl === "RAWAN RAYAPAN" ? "rawan" : "labil";
@@ -1468,13 +1670,490 @@
   }
 
   function bersihkanPilihanPeta() {
+    if (map.pm && map.pm.globalDrawModeEnabled()) {
+      map.pm.disableDraw();
+    }
+    state.isDrawingKavling = false;
+    state.activeKavlingResult = null;
+    state.segmentLayersById = {};
     state.selectedFeature = null;
     state.dusunHighlightGroup.clearLayers();
+    state.kavlingSegmentGroup.clearLayers();
     map.closePopup();
     if (state.layers.admin) {
       state.layers.admin.setStyle(styleBatasAdmin);
     }
+    sinkronStatusTombolGambar(false, false);
     renderEmptyStateSidebar();
+  }
+
+  // =========================================================================
+  // 10B. MILESTONE FASE 2: PEMOTONGAN POLIGON KAVLING & ZONAL STATS RASTER
+  // =========================================================================
+  // Palet Warna Asli sesuai Peta_Kerawanan_Longsor_SlemanBantul_Final.gpkg & Tabel 5.2 Hari 7
+  const KAVLING_ZONE_STYLE = {
+    Hijau: { fill: "#2E7D32", border: "#1B5E20", opacity: 0.55 },
+    HijauStandar: { fill: "#66BB6A", border: "#2E7D32", opacity: 0.55 },
+    Kuning: { fill: "#FB8C00", border: "#BF360C", opacity: 0.55 },
+    KuningGrumosol: { fill: "#FFB300", border: "#E65100", opacity: 0.55 },
+    Merah: { fill: "#D32F2F", border: "#B71C1C", opacity: 0.55 },
+  };
+
+  function tentukanGayaSegmen(props) {
+    if (props && props.warna_hex && props.border_hex) {
+      return { fill: props.warna_hex, border: props.border_hex, opacity: 0.55 };
+    }
+    const zText = String((props && (props.zona_triase || props.kategori_zona)) || "").toUpperCase();
+    if (zText.includes("MERAH")) return KAVLING_ZONE_STYLE.Merah;
+    if (zText.includes("KUNING")) {
+      if (zText.includes("LEMPUNG EKSPANSIF") || zText.includes("DATAR -")) return KAVLING_ZONE_STYLE.KuningGrumosol;
+      return KAVLING_ZONE_STYLE.Kuning;
+    }
+    if (zText.includes("KONSTRUKSI STANDAR")) return KAVLING_ZONE_STYLE.HijauStandar;
+    return KAVLING_ZONE_STYLE.Hijau;
+  }
+
+  function sinkronStatusTombolGambar(isDrawing, hasResult) {
+    const btnMain = document.getElementById("btn-draw-kavling");
+    const btnTop = document.getElementById("btn-draw-kavling-top");
+    const btnResetMap = document.getElementById("btn-reset-kavling-map");
+
+    if (btnMain) {
+      if (isDrawing) {
+        btnMain.classList.add("drawing-active");
+        btnMain.innerHTML = "<span>🛑 Batal Gambar Poligon</span>";
+      } else {
+        btnMain.classList.remove("drawing-active");
+        btnMain.innerHTML = "<span>✏️ Gambar Poligon Kavling</span>";
+      }
+    }
+    if (btnTop) {
+      if (isDrawing) {
+        btnTop.classList.add("active");
+        btnTop.innerHTML = "🛑 Batal Gambar";
+      } else {
+        btnTop.classList.remove("active");
+        btnTop.innerHTML = "✏️ Gambar Poligon Kavling";
+      }
+    }
+    if (btnResetMap) {
+      btnResetMap.style.display = hasResult ? "inline-flex" : "none";
+    }
+  }
+
+  function aktifkanModeGambarKavling() {
+    if (!map.pm) {
+      alert("Plugin Leaflet-Geoman belum termuat. Pastikan koneksi internet aktif.");
+      return;
+    }
+    if (map.pm.globalDrawModeEnabled()) {
+      map.pm.disableDraw();
+      state.isDrawingKavling = false;
+      sinkronStatusTombolGambar(false, Boolean(state.activeKavlingResult));
+      setLoading(null);
+      return;
+    }
+    map.closePopup();
+    state.isDrawingKavling = true;
+    sinkronStatusTombolGambar(true, Boolean(state.activeKavlingResult));
+    setLoading("✏️ Klik titik-titik sudut poligon kavling di peta, lalu klik titik awal untuk memotong segmen...");
+
+    map.pm.enableDraw("Polygon", {
+      snappable: true,
+      snapDistance: 15,
+      allowSelfIntersection: false,
+      finishOn: "dblclick",
+      templineStyle: { color: "#2563eb", weight: 2.5, dashArray: "5,5" },
+      hintlineStyle: { color: "#2563eb", weight: 2, dashArray: "5,5" },
+      pathOptions: {
+        color: "#1d4ed8",
+        fillColor: "#3b82f6",
+        fillOpacity: 0.25,
+        weight: 2.5,
+      },
+    });
+  }
+
+  function renderLoadingKavlingSidebar() {
+    const panel = document.getElementById("inspector-panel");
+    if (!panel) return;
+    panel.innerHTML = `
+      <div class="kavling-loading-card">
+        <div class="kavling-spinner"></div>
+        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-bottom:5px;">
+          Memproses Segmentasi Spasial Kavling...
+        </div>
+        <div style="font-size:11.5px;color:#475569;line-height:1.5;">
+          Memotong geometri poligon terhadap zona triase (<b>EPSG:32749</b>) serta mengekstrak sudut kemiringan kontinu (<b>&beta;&deg;</b>) &amp; beda tinggi elevasi DEMNAS (<b>H</b>).
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSegmenKavlingDiPeta(fcData) {
+    state.kavlingSegmentGroup.clearLayers();
+    state.segmentLayersById = {};
+
+    const geojsonLayer = L.geoJSON(fcData, {
+      style: (feature) => {
+        const p = feature.properties || {};
+        const st = tentukanGayaSegmen(p);
+        return {
+          color: st.border,
+          weight: 2.4,
+          opacity: 0.95,
+          fillColor: st.fill,
+          fillOpacity: 0.55,
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties || {};
+        const st = tentukanGayaSegmen(p);
+        const segId = p.segmen_id || "SEG-01";
+        const zonaLabel = p.zona_singkat || p.zona_triase || "Zona Triase";
+
+        state.segmentLayersById[segId] = layer;
+
+        const tooltipHtml = `
+          <div style="min-width:175px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+              <b style="font-size:12px;color:#fff;">${segId} — ${zonaLabel}</b>
+              <span style="width:10px;height:10px;border-radius:50%;background:${st.fill};display:inline-block;"></span>
+            </div>
+            <div style="font-size:11px;line-height:1.45;color:#e2e8f0;">
+              <div>📐 Luas Segmen: <b>${formatAngka(p.luas_m2, 1)} m²</b> (${formatAngka(p.persen_luas, 1)}%)</div>
+              <div>⛰️ Sudut Lereng (&beta;): <b>${formatAngka(p.beta_mean, 2)}&deg;</b></div>
+              <div>📏 Beda Tinggi (H): <b>${formatAngka(p.tinggi_H, 2)} m</b> (${formatAngka(p.elev_min, 1)}–${formatAngka(p.elev_max, 1)} mdpl)</div>
+            </div>
+          </div>
+        `;
+
+        layer.bindTooltip(tooltipHtml, {
+          sticky: true,
+          direction: "top",
+          className: "kavling-seg-tooltip",
+        });
+
+        layer.on("mouseover", () => {
+          layer.setStyle({
+            weight: 3.6,
+            fillOpacity: 0.75,
+          });
+          if (layer.bringToFront) layer.bringToFront();
+        });
+
+        layer.on("mouseout", () => {
+          layer.setStyle({
+            color: st.border,
+            weight: 2.4,
+            fillColor: st.fill,
+            fillOpacity: 0.55,
+          });
+        });
+      },
+    }).addTo(state.kavlingSegmentGroup);
+
+    const bounds = geojsonLayer.getBounds();
+    if (bounds && bounds.isValid()) {
+      map.flyToBounds(bounds.pad(0.25), { duration: 0.75, maxZoom: 17 });
+    }
+  }
+
+  function renderPanelSegmenKavling(fcData) {
+    const panel = document.getElementById("inspector-panel");
+    if (!panel) return;
+
+    const features = fcData.features || [];
+    const summary = fcData.summary || {};
+
+    let totalLuas = Number(summary.total_luas_m2);
+    if (!Number.isFinite(totalLuas) || totalLuas <= 0) {
+      totalLuas = features.reduce((acc, f) => acc + Number((f.properties && f.properties.luas_m2) || 0), 0);
+    }
+
+    const betaKavling =
+      summary.beta_mean_kavling !== undefined
+        ? summary.beta_mean_kavling
+        : totalLuas > 0
+        ? features.reduce(
+            (acc, f) => acc + Number(f.properties.beta_mean || 0) * Number(f.properties.luas_m2 || 0),
+            0
+          ) / totalLuas
+        : 0;
+
+    const tinggiHKavling =
+      summary.tinggi_H_kavling !== undefined
+        ? summary.tinggi_H_kavling
+        : features.reduce((acc, f) => Math.max(acc, Number(f.properties.tinggi_H || 0)), 0);
+
+    const propZona = summary.proporsi_zona || {
+      Hijau: { luas_m2: 0, persen: 0 },
+      Kuning: { luas_m2: 0, persen: 0 },
+      Merah: { luas_m2: 0, persen: 0 },
+    };
+
+    const pctHijau = Number((propZona.Hijau && propZona.Hijau.persen) || 0);
+    const pctKuning = Number((propZona.Kuning && propZona.Kuning.persen) || 0);
+    const pctMerah = Number((propZona.Merah && propZona.Merah.persen) || 0);
+
+    const rowsHtml = features
+      .map((f) => {
+        const p = f.properties || {};
+        const kat =
+          p.kategori_zona ||
+          (String(p.zona_triase || "").toUpperCase().includes("MERAH")
+            ? "Merah"
+            : String(p.zona_triase || "").toUpperCase().includes("KUNING")
+            ? "Kuning"
+            : "Hijau");
+        const st = KAVLING_ZONE_STYLE[kat] || KAVLING_ZONE_STYLE.Hijau;
+        const namaZona = p.zona_singkat || `Zona ${kat}`;
+
+        return `
+          <tr class="kavling-seg-row" data-seg-id="${p.segmen_id}">
+            <td>
+              <div style="font-weight:800;color:#0f172a;margin-bottom:2px;">${p.segmen_id}</div>
+              <span class="seg-zone-badge ${kat}">
+                <span style="width:7px;height:7px;border-radius:50%;background:${st.fill};display:inline-block;"></span>
+                ${namaZona}
+              </span>
+            </td>
+            <td class="seg-num-cell">${formatAngka(p.luas_m2, 1)}</td>
+            <td class="seg-num-cell">${formatAngka(p.persen_luas, 1)}%</td>
+            <td class="seg-num-cell">${formatAngka(p.beta_mean, 2)}&deg;</td>
+            <td class="seg-num-cell">
+              <div>${formatAngka(p.tinggi_H, 2)} m</div>
+              <div style="font-size:9.5px;color:#64748b;font-weight:500;">${formatAngka(p.elev_min, 1)}–${formatAngka(p.elev_max, 1)} mdpl</div>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    panel.innerHTML = `
+      <!-- 1. HERO CARD RINGKASAN KAVLING -->
+      <div class="kavling-hero-card">
+        <div class="kavling-hero-top">
+          <span class="kavling-phase-badge">📐 Hasil Segmentasi Kavling</span>
+          <span style="font-size:10.5px;color:#94a3b8;font-family:'JetBrains Mono',monospace;">EPSG:32749</span>
+        </div>
+
+        <div class="kavling-total-area-box">
+          <div>
+            <div class="kavling-total-label">Total Luas Kavling</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;">
+              &asymp; ${formatAngka(totalLuas / 10000, 3)} Ha &bull; ${features.length} Segmen Spasial
+            </div>
+          </div>
+          <div class="kavling-total-value">${formatAngka(totalLuas, 1)} m&sup2;</div>
+        </div>
+
+        <div class="kavling-kpi-grid">
+          <div class="kavling-kpi-item">
+            <span class="kavling-kpi-lbl">Jumlah Segmen</span>
+            <span class="kavling-kpi-val">${features.length} Zona</span>
+          </div>
+          <div class="kavling-kpi-item">
+            <span class="kavling-kpi-lbl">Rerata Lereng (&beta;)</span>
+            <span class="kavling-kpi-val">${formatAngka(betaKavling, 2)}&deg;</span>
+          </div>
+          <div class="kavling-kpi-item">
+            <span class="kavling-kpi-lbl">Beda Tinggi (H)</span>
+            <span class="kavling-kpi-val">${formatAngka(tinggiHKavling, 2)} m</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="kavling-stacked-bar" title="Proporsi Luas Kelas Skoring GPKG">
+            <div class="kavling-stacked-seg" style="width:${pctHijau}%;background:#2E7D32;"></div>
+            <div class="kavling-stacked-seg" style="width:${pctKuning}%;background:#FB8C00;"></div>
+            <div class="kavling-stacked-seg" style="width:${pctMerah}%;background:#D32F2F;"></div>
+          </div>
+          <div class="kavling-zone-MiniLegend" style="margin-top:6px;">
+            <span>🟢 Skor Hijau (&lt;2,20 / Datar): <b>${formatAngka(pctHijau, 1)}%</b></span>
+            <span>🟠 Skor Kuning (2,20–3,40): <b>${formatAngka(pctKuning, 1)}%</b></span>
+            <span>🔴 Skor Merah (&gt;3,40): <b>${formatAngka(pctMerah, 1)}%</b></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. TABEL MATRIKS KARAKTERISTIK SEGMEN KAVLING -->
+      <div class="section-card">
+        <div class="section-title">
+          <span>📊 Tabel Matriks Segmen Kavling</span>
+          <span class="badge-count">${features.length} Segmen</span>
+        </div>
+
+        <div class="segment-table-wrap">
+          <table class="segment-matrix-table">
+            <thead>
+              <tr>
+                <th>Segmen / Zona</th>
+                <th style="text-align:right;">Luas (m&sup2;)</th>
+                <th style="text-align:right;">Porsi (%)</th>
+                <th style="text-align:right;">Kemiringan (&beta;&deg;)</th>
+                <th style="text-align:right;">Beda Tinggi H (m)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>TOTAL KAVLING</td>
+                <td class="seg-num-cell">${formatAngka(totalLuas, 1)}</td>
+                <td class="seg-num-cell">100,0%</td>
+                <td class="seg-num-cell">${formatAngka(betaKavling, 2)}&deg;</td>
+                <td class="seg-num-cell">${formatAngka(tinggiHKavling, 2)} m</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.4;">
+          💡 <b>Catatan Geospasial:</b> Luas dihitung pada proyeksi metrik <code>EPSG:32749</code>. Sudut kemiringan rata-rata (<b>&beta;&deg;</b>) dan beda tinggi (<b>H = elev_max &minus; elev_min</b>) diekstrak secara kontinu dari piksel raster DEMNAS &amp; Slope DIY.
+        </div>
+      </div>
+
+      <!-- 3. PARAMETER GEOTEKNIK DASAR TIAP SEGMEN (DARI VEKTOR MASTER) -->
+      <div class="section-card">
+        <div class="section-title">
+          <span>🧪 Atribut Parameter Geoteknik Segmen</span>
+        </div>
+        <div class="field-summary-list">
+          ${features
+            .map((f) => {
+              const p = f.properties || {};
+              const kat = p.kategori_zona || "Hijau";
+              return `
+                <div class="field-row" style="padding:7px 9px;">
+                  <div style="min-width:0;flex:1;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                      <span style="font-weight:800;font-size:11.5px;color:#0f172a;">${p.segmen_id} (${p.zona_singkat || kat})</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#334155;">
+                        c'=${formatAngka(p.c_kpa, 1)} kPa | &phi;'=${formatAngka(p.phi_deg, 1)}&deg; | m=${formatAngka(p.rasio_m, 2)}
+                      </span>
+                    </div>
+                    <div style="font-size:10.5px;color:#64748b;margin-top:2px;">
+                      ${p.zona_triase || "-"}
+                    </div>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+
+      <!-- 4. TOMBOL AKSI RESET KAVLING -->
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary" id="btn-redraw-kavling-panel" style="flex:1;justify-content:center;">
+          ✏️ Gambar Ulang
+        </button>
+        <button type="button" class="btn btn-reset-kavling-full" id="btn-reset-kavling-panel" style="flex:1.2;">
+          🗑️ Hapus Poligon / Reset Kavling
+        </button>
+      </div>
+    `;
+
+    // Interaksi baris tabel -> sorot segmen di peta
+    panel.querySelectorAll(".kavling-seg-row").forEach((rowEl) => {
+      const segId = rowEl.getAttribute("data-seg-id");
+      const lyr = state.segmentLayersById[segId];
+      if (!lyr) return;
+
+      rowEl.addEventListener("mouseenter", () => {
+        lyr.setStyle({ weight: 3.8, fillOpacity: 0.78 });
+        if (lyr.openTooltip) lyr.openTooltip();
+      });
+      rowEl.addEventListener("mouseleave", () => {
+        const p = (lyr.feature && lyr.feature.properties) || {};
+        const st = tentukanGayaSegmen(p);
+        lyr.setStyle({
+          color: st.border,
+          weight: 2.4,
+          fillColor: st.fill,
+          fillOpacity: 0.55,
+        });
+        if (lyr.closeTooltip) lyr.closeTooltip();
+      });
+      rowEl.addEventListener("click", () => {
+        if (lyr.getBounds) {
+          map.flyToBounds(lyr.getBounds().pad(0.35), { duration: 0.6, maxZoom: 17.5 });
+        }
+        if (lyr.openTooltip) lyr.openTooltip();
+      });
+    });
+
+    const btnResetPanel = document.getElementById("btn-reset-kavling-panel");
+    if (btnResetPanel) {
+      btnResetPanel.addEventListener("click", () => {
+        bersihkanPilihanPeta();
+      });
+    }
+
+    const btnRedrawPanel = document.getElementById("btn-redraw-kavling-panel");
+    if (btnRedrawPanel) {
+      btnRedrawPanel.addEventListener("click", () => {
+        aktifkanModeGambarKavling();
+      });
+    }
+  }
+
+  async function prosesAnalisisKavling(geojsonGeometry) {
+    try {
+      state.selectedFeature = null;
+      state.dusunHighlightGroup.clearLayers();
+      state.kavlingSegmentGroup.clearLayers();
+      map.closePopup();
+      if (state.layers.admin) {
+        state.layers.admin.setStyle(styleBatasAdmin);
+      }
+
+      renderLoadingKavlingSidebar();
+      setLoading("⏳ Memotong poligon kavling & menghitung statistik raster DEMNAS (EPSG:32749)...");
+
+      const response = await fetch("/api/analisis-segmen-kavling", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry: geojsonGeometry }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.status === "error") {
+        throw new Error(data.message || `Gagal memproses poligon kavling (HTTP ${response.status}).`);
+      }
+
+      state.activeKavlingResult = data;
+      sinkronStatusTombolGambar(false, true);
+      renderSegmenKavlingDiPeta(data);
+      renderPanelSegmenKavling(data);
+      setLoading(null);
+    } catch (err) {
+      console.error("[KAVLING ANALYZER ERROR]", err);
+      setLoading(null);
+      sinkronStatusTombolGambar(false, false);
+      const panel = document.getElementById("inspector-panel");
+      if (panel) {
+        panel.innerHTML = `
+          <div class="section-card" style="border-color:#fca5a5;background:#fef2f2;">
+            <div style="font-size:13px;font-weight:800;color:#991b1b;margin-bottom:6px;">
+              ⚠️ Analisis Poligon Kavling Gagal
+            </div>
+            <div style="font-size:11.5px;color:#7f1d1d;line-height:1.5;margin-bottom:12px;">
+              ${err.message || "Pastikan poligon digambar di dalam wilayah cakupan Kab. Sleman, Kab. Bantul, atau Kota Yogyakarta."}
+            </div>
+            <button type="button" class="btn btn-primary" id="btn-retry-kavling" style="width:100%;justify-content:center;">
+              ✏️ Coba Gambar Poligon Lagi
+            </button>
+          </div>
+        `;
+        const btnRetry = document.getElementById("btn-retry-kavling");
+        if (btnRetry) {
+          btnRetry.addEventListener("click", () => aktifkanModeGambarKavling());
+        }
+      }
+    }
   }
 
   // =========================================================================
@@ -1520,22 +2199,57 @@
       return;
     }
 
+    if (state.activeLegendMode === "hujan") {
+      el.innerHTML = `
+        <div class="legend-title">🌧️ Skoring Curah Hujan IDW (GPKG Layer 4)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${RAINFALL_COLORS[5]};"></span><span><b>Skor 5</b>: &gt; 3.000 mm/th (Sangat Tinggi | m = 0,90)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${RAINFALL_COLORS[4]};"></span><span><b>Skor 4</b>: 2.501 - 3.000 mm/th (Tinggi | m = 0,75)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${RAINFALL_COLORS[3]};border:1px solid #94a3b8;"></span><span><b>Skor 3</b>: 2.001 - 2.500 mm/th (Sedang | m = 0,60)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${RAINFALL_COLORS[2]};"></span><span><b>Skor 2</b>: 1.500 - 2.000 mm/th (Rendah | m = 0,45)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${RAINFALL_COLORS[1]};"></span><span><b>Skor 1</b>: &lt; 1.500 mm/th (Sangat Rendah | m = 0,30)</span></div>
+      `;
+      return;
+    }
+
+    if (state.activeLegendMode === "tutupan") {
+      el.innerHTML = `
+        <div class="legend-title">🏡 Skoring Tutupan Lahan RBI (GPKG Layer 5)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#D32F2F;"></span><span><b>Skor 5</b>: Sawah Irigasi/Tadah Hujan &amp; Tegalan/Ladang (Infiltrasi Tinggi - Sangat Rawan)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#FB8C00;"></span><span><b>Skor 4</b>: Semak/Belukar &amp; Rumput/Tanah Kosong (Akar Dangkal &lt;0.3m - Rawan)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#FFB300;"></span><span><b>Skor 3</b>: Permukiman, Bandara, Industri, Emplasemen (Beban Surcharge Lereng - Sedang)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#66BB6A;"></span><span><b>Skor 2</b>: Kebun / Perkebunan (Kohesi Akar Pohon Sedang 2-5 kPa - Rendah)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#2E7D32;"></span><span><b>Skor 1</b>: Hutan Lindung/Konservasi/Produksi &amp; Badan Air (<span style="color:#0284C7;font-weight:700;">#0284C7</span>) (Aman)</span></div>
+      `;
+      return;
+    }
+
     el.innerHTML = `
-      <div class="legend-title">🛡️ Status Triase Geoteknik</div>
-      <div class="legend-row">
-        <span class="legend-swatch" style="background:#10B981;"></span>
-        <span><b>Zona Hijau</b>: Aman / Risiko Rendah</span>
+      <div class="legend-title">📊 SKORING KERAWANAN LONGSOR (DATA GPKG/GJS)</div>
+      <div style="font-size:9.5px;color:#475569;margin-bottom:5px;line-height:1.35;">
+        <b>Skor Akhir</b> = 0,30 Lereng + 0,25 Tanah + 0,20 Batuan + 0,15 Hujan + 0,10 Lahan
       </div>
       <div class="legend-row">
-        <span class="legend-swatch" style="background:#F59E0B;"></span>
-        <span><b>Zona Kuning</b>: Waspada / Perlu Mitigasi</span>
+        <span class="legend-swatch" style="background:#2E7D32;border:1px solid #1B5E20;"></span>
+        <span><b>Skor 1,50–2,15 (0°–8°)</b>: ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil)</span>
       </div>
       <div class="legend-row">
-        <span class="legend-swatch" style="background:#EF4444;"></span>
-        <span><b>Zona Merah</b>: Bahaya Kritis / Non-Buildable</span>
+        <span class="legend-swatch" style="background:#66BB6A;border:1px solid #2E7D32;"></span>
+        <span><b>Skor &lt; 2,20 (1,80–2,15)</b>: ZONA HIJAU (Risiko Rendah - Konstruksi Standar)</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#FFB300;border:1px solid #E65100;"></span>
+        <span><b>Skor 2,50–3,50 (Datar)</b>: ZONA KUNING (Datar - Waspada Lempung Ekspansif / Pondasi)</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#FB8C00;border:1px solid #BF360C;"></span>
+        <span><b>Skor 2,20–3,40</b>: ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud &amp; RAB)</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#D32F2F;border:1px solid #B71C1C;"></span>
+        <span><b>Skor &gt; 3,40 (3,45–4,60)</b>: ZONA MERAH (Risiko Tinggi - Rawan Longsor &amp; Wajib Uji Sondir)</span>
       </div>
       <div style="margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;">
-        Klik titik mana saja di peta untuk menyorot batas wilayah &amp; analisis Dusun.
+        Klik titik mana saja di peta untuk menyorot batas wilayah &amp; rincian skoring GPKG/GeoJSON.
       </div>
     `;
   }
@@ -1944,9 +2658,9 @@
         const l = evaluasiKemiringanDay8(p.lereng_derajat, p.lereng_persen);
         const pd = evaluasiPedologiDay8(p.jenis_tanah);
         const lt = evaluasiLitologiDay8(p.formasi_batuan, p.litologi_penyusun);
-        const hj = evaluasiCurahHujanDay8(p.ch_idw_mm);
+        const hj = evaluasiCurahHujanDay8(p.curah_hujan_mm || p.ch_idw_mm, p.skor_hujan, p.rasio_m);
         const tu = evaluasiTutupanLahanDay8(p.tutupan_dominan, l.derajat);
-        const tr = evaluasiTriaseDay8(l, pd, lt, hj, tu);
+        const tr = evaluasiTriaseDay8(l, pd, lt, hj, tu, p.jenis_tanah || pd.nama);
 
         p._day8Hex = tr.hex;
         p._day8ZonaNama = tr.namaZona;
@@ -2043,17 +2757,43 @@
         });
       }
 
-      // 5. Layer Kontur Curah Hujan IDW (Opsional di Layer Switcher)
+      // 5. Layer Kontur Curah Hujan IDW Standar GPKG Layer 4 (clean_curah_hujan_idw.geojson)
       state.layers.idwHujan = buatLayerGeoJsonUTM(idwHujanData, {
         renderer: canvasRenderer,
-        interactive: false,
-        style: (feature) => ({
-          color: "#ffffff",
-          weight: 1.4,
-          dashArray: "5,3",
-          fillColor: feature.properties.warna_hex || SCORE_COLORS[feature.properties.skor || 3],
-          fillOpacity: 0.5,
-        }),
+        interactive: true,
+        style: (feature) => {
+          const fp = feature.properties || {};
+          const infoHujan = evaluasiCurahHujanDay8(
+            fp.curah_hujan_mm || fp.ch_idw_mm,
+            fp.skor_hujan || fp.skor,
+            fp.rasio_m || fp.m_jenuh
+          );
+          const fillHex = fp.warna_hex || RAINFALL_COLORS[infoHujan.skor] || "#FFFF00";
+          return {
+            color: "#1e293b",
+            weight: 1.2,
+            dashArray: "5,3",
+            fillColor: fillHex,
+            fillOpacity: 0.62,
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const fp = feature.properties || {};
+          const infoHujan = evaluasiCurahHujanDay8(
+            fp.curah_hujan_mm || fp.ch_idw_mm,
+            fp.skor_hujan || fp.skor,
+            fp.rasio_m || fp.m_jenuh
+          );
+          const chVal = Number(fp.curah_hujan_mm || infoHujan.chMm || 2350);
+          const mVal = Number(fp.rasio_m || infoHujan.mRatio || 0.60).toFixed(2);
+          layer.bindTooltip(
+            `<b>🌧️ Curah Hujan IDW: ${formatAngka(chVal, 0)} mm/thn | Rasio Kejenuhan m: ${mVal}</b><br><span style="font-size:11px;">Skor Hujan (GPKG): <b>${infoHujan.skor}</b> — ${fp.ket_hujan || infoHujan.kelas}</span>`,
+            { sticky: true }
+          );
+          layer.on("click", (ev) => {
+            inspeksiTitikPeta(ev.latlng, null, null, null);
+          });
+        },
       });
 
       // 6. Layer Grid DEMNAS DIY UTM (Opsional di Layer Switcher)
@@ -2079,7 +2819,7 @@
           const lt = evaluasiLitologiDay8(p.formasi_batuan, "");
           const hj = evaluasiCurahHujanDay8(p.ch_idw_area_mm);
           const tu = evaluasiTutupanLahanDay8(p.tutupan_dominan, l.derajat);
-          const tr = evaluasiTriaseDay8(l, pd, lt, hj, tu);
+          const tr = evaluasiTriaseDay8(l, pd, lt, hj, tu, p.jenis_tanah || pd.nama);
           return {
             color: "#ffffff",
             weight: 1.5,
@@ -2123,7 +2863,7 @@
           const lt = evaluasiLitologiDay8(p.formasi_batuan, "");
           const hj = evaluasiCurahHujanDay8(p.ch_idw_titik_mm);
           const tu = evaluasiTutupanLahanDay8(p.tutupan_dominan, l.derajat);
-          const tr = evaluasiTriaseDay8(l, pd, lt, hj, tu);
+          const tr = evaluasiTriaseDay8(l, pd, lt, hj, tu, p.jenis_tanah || pd.nama);
           return L.circleMarker(latlng, {
             radius: 7.5,
             fillColor: tr.hex,
@@ -2151,35 +2891,144 @@
     }
   }
 
+  async function toggleKerawananLongsor(checked) {
+    if (!checked) {
+      if (state.layers.kerawananLongsor && map.hasLayer(state.layers.kerawananLongsor)) {
+        map.removeLayer(state.layers.kerawananLongsor);
+      }
+      return;
+    }
+    if (state.kerawananLoaded && state.layers.kerawananLongsor) {
+      state.layers.kerawananLongsor.addTo(map);
+      state.activeLegendMode = "triase";
+      updateLegend();
+      return;
+    }
+    try {
+      setLoading("⏳ Memuat Peta Skoring Kerawanan Longsor (GPKG/GJS Final)...");
+      const data = await fetchGeoJSON("clean_kerawanan_longsor.geojson");
+      state.kerawananFeatures = data.features || [];
+      state.layers.kerawananLongsor = buatLayerGeoJsonUTM(data, {
+        renderer: canvasRenderer,
+        interactive: true,
+        style: (feature) => {
+          const fp = feature.properties || {};
+          if (fp.warna_hex) {
+            return {
+              fillColor: fp.warna_hex,
+              color: fp.border_hex || "#1e293b",
+              weight: 1.0,
+              fillOpacity: 0.60,
+            };
+          }
+          const z = String(fp.zona_triase || fp.status_zona || "").toLowerCase();
+          if (z.includes("merah") || z.includes("tinggi")) {
+            return {
+              fillColor: "#D32F2F",
+              color: "#B71C1C",
+              weight: 1.0,
+              fillOpacity: 0.60,
+            };
+          }
+          if (z.includes("kuning") || z.includes("sedang")) {
+            const isGrumosol = z.includes("lempung ekspansif") || z.includes("datar -");
+            return {
+              fillColor: isGrumosol ? "#FFB300" : "#FB8C00",
+              color: isGrumosol ? "#E65100" : "#BF360C",
+              weight: 0.95,
+              fillOpacity: 0.58,
+            };
+          }
+          const isStandar = z.includes("konstruksi standar");
+          return {
+            fillColor: isStandar ? "#66BB6A" : "#2E7D32",
+            color: isStandar ? "#2E7D32" : "#1B5E20",
+            weight: 0.95,
+            fillOpacity: 0.58,
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const fp = feature.properties || {};
+          const skorAkhir = Number(fp.skor_akhir || fp.Skor_Akhir || 2.0).toFixed(2);
+          const statusZona = fp.zona_triase || fp.status_zona || "ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil)";
+          const sL = fp.skor_lereng ?? "-";
+          const sT = fp.skor_tanah ?? "-";
+          const sB = fp.skor_batuan ?? "-";
+          const sH = fp.skor_hujan ?? "-";
+          const sLh = fp.skor_lahan ?? "-";
+          layer.bindTooltip(
+            `<b>📊 Skor Akhir: ${skorAkhir} / 5,00</b><br><span style="font-size:11px;"><b>${statusZona}</b><br>Rincian Skor GPKG: Lereng=${sL} | Tanah=${sT} | Batuan=${sB} | Hujan=${sH} | Lahan=${sLh}</span>`,
+            { sticky: true }
+          );
+          layer.on("click", (ev) => {
+            inspeksiTitikPeta(ev.latlng, null, null, null);
+          });
+        },
+      }).addTo(map);
+      state.kerawananLoaded = true;
+      state.activeLegendMode = "triase";
+      updateLegend();
+      setLoading(null);
+    } catch (err) {
+      console.error(err);
+      setLoading(null);
+    }
+  }
+
   async function toggleTutupanLahan(checked) {
     if (!checked) {
       if (state.layers.tutupan && map.hasLayer(state.layers.tutupan)) {
         map.removeLayer(state.layers.tutupan);
       }
+      if (state.activeLegendMode === "tutupan") {
+        state.activeLegendMode = "triase";
+        updateLegend();
+      }
       return;
     }
     if (state.tutupanLoaded && state.layers.tutupan) {
       state.layers.tutupan.addTo(map);
+      state.activeLegendMode = "tutupan";
+      updateLegend();
       return;
     }
     try {
-      setLoading("⏳ Memuat layer Tutupan Lahan RBI 25K...");
+      setLoading("⏳ Memuat layer Tutupan Lahan RBI (GPKG Layer 5)...");
       const data = await fetchGeoJSON("clean_tutupan_lahan_diy.geojson");
       state.tutupanFeatures = data.features || [];
       state.layers.tutupan = buatLayerGeoJsonUTM(data, {
         renderer: canvasRenderer,
-        interactive: false,
+        interactive: true,
         style: (feature) => {
-          const tu = evaluasiTutupanLahanDay8(feature.properties.klasifikasi, 5);
+          const fp = feature.properties || {};
+          const tu = evaluasiTutupanLahanDay8(fp.pl || fp.klasifikasi, 5);
+          const sLahan = Number(fp.skor_lahan || fp.skor || tu.skor || 3);
+          const fillHex = fp.warna_hex || SCORE_COLORS[sLahan] || tu.warnaHex || "#FFB300";
           return {
             color: "#1e293b",
-            weight: 0.25,
-            fillColor: SCORE_COLORS[tu.skor] || "#38BDF8",
-            fillOpacity: 0.55,
+            weight: 0.45,
+            fillColor: fillHex,
+            fillOpacity: 0.62,
           };
+        },
+        onEachFeature: (feature, layer) => {
+          const fp = feature.properties || {};
+          const namaPl = fp.pl || fp.klasifikasi || "Tutupan Lahan";
+          const tu = evaluasiTutupanLahanDay8(namaPl, 5);
+          const sLahan = Number(fp.skor_lahan || fp.skor || tu.skor || 3);
+          const ketLahan = fp.ket_lahan || tu.kategori;
+          layer.bindTooltip(
+            `<b>🏡 Tutupan Lahan RBI: ${namaPl}</b><br><span style="font-size:11px;">Skor Lahan (GPKG): <b>${sLahan}</b> (Bobot 10%) — ${ketLahan}</span>`,
+            { sticky: true }
+          );
+          layer.on("click", (ev) => {
+            inspeksiTitikPeta(ev.latlng, null, null, null);
+          });
         },
       }).addTo(map);
       state.tutupanLoaded = true;
+      state.activeLegendMode = "tutupan";
+      updateLegend();
       setLoading(null);
     } catch (err) {
       console.error(err);
@@ -2193,8 +3042,102 @@
 
   // Klik di sembarang titik di peta (Google Maps Hybrid maupun OpenStreetMap)
   map.on("click", (e) => {
+    // Jangan jalankan inspeksi titik saat pengguna sedang menggambar poligon kavling
+    if (state.isDrawingKavling || (map.pm && map.pm.globalDrawModeEnabled())) {
+      return;
+    }
     inspeksiTitikPeta(e.latlng, null, null, null);
   });
+
+  // =========================================================================
+  // 14B. INISIALISASI LEAFLET-GEOMAN & EVENT HANDLER POLIGON KAVLING
+  // =========================================================================
+  if (map.pm) {
+    map.pm.addControls({
+      position: "topleft",
+      drawPolygon: true,
+      drawMarker: false,
+      drawCircleMarker: false,
+      drawPolyline: false,
+      drawRectangle: false,
+      drawCircle: false,
+      drawText: false,
+      editMode: false,
+      dragMode: false,
+      cutPolygon: false,
+      removalMode: false,
+      rotateMode: false,
+    });
+
+    map.on("pm:drawstart", () => {
+      state.isDrawingKavling = true;
+      sinkronStatusTombolGambar(true, Boolean(state.activeKavlingResult));
+    });
+
+    map.on("pm:drawend", () => {
+      state.isDrawingKavling = false;
+      sinkronStatusTombolGambar(false, Boolean(state.activeKavlingResult));
+    });
+
+    map.on("pm:create", (e) => {
+      state.isDrawingKavling = false;
+      const sketchLayer = e.layer;
+      const geojsonFeat = sketchLayer.toGeoJSON();
+      // Hapus poligon sketsa sementara sebelum merender segmen hasil dari backend
+      map.removeLayer(sketchLayer);
+      if (geojsonFeat && geojsonFeat.geometry) {
+        prosesAnalisisKavling(geojsonFeat.geometry);
+      }
+    });
+  }
+
+  const btnDrawKavling = document.getElementById("btn-draw-kavling");
+  if (btnDrawKavling) {
+    btnDrawKavling.addEventListener("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      aktifkanModeGambarKavling();
+    });
+  }
+
+  const btnDrawKavlingTop = document.getElementById("btn-draw-kavling-top");
+  if (btnDrawKavlingTop) {
+    btnDrawKavlingTop.addEventListener("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      aktifkanModeGambarKavling();
+    });
+  }
+
+  const btnResetKavlingMap = document.getElementById("btn-reset-kavling-map");
+  if (btnResetKavlingMap) {
+    btnResetKavlingMap.addEventListener("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      bersihkanPilihanPeta();
+    });
+  }
+
+  const btnDemoKavling = document.getElementById("btn-demo-kavling");
+  if (btnDemoKavling) {
+    btnDemoKavling.addEventListener("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (map.pm && map.pm.globalDrawModeEnabled()) {
+        map.pm.disableDraw();
+      }
+      // Poligon sampel kavling lintas 3 zona triase (Hijau, Kuning, Merah) di perbukitan Imogiri-Dlingo (WGS84)
+      const demoPolygonWgs84 = {
+        type: "Polygon",
+        coordinates: [
+          [
+            [110.401195, -7.924259],
+            [110.403917, -7.924267],
+            [110.403909, -7.921553],
+            [110.401187, -7.921545],
+            [110.401195, -7.924259],
+          ],
+        ],
+      };
+      prosesAnalisisKavling(demoPolygonWgs84);
+    });
+  }
 
   map.on("mousemove", (e) => {
     const utm = latLngToUtm49s(e.latlng);
@@ -2228,11 +3171,20 @@
     });
   }
 
+  // Checkbox Zona Kerawanan Longsor (Triase Makro)
+  const chkKerawanan = document.getElementById("chk-kerawanan-longsor");
+  if (chkKerawanan) {
+    chkKerawanan.addEventListener("change", (e) => {
+      toggleKerawananLongsor(e.target.checked);
+    });
+  }
+
   // Checkbox Layer Spasial lainnya
   const overlayToggles = [
     ["chk-lereng-poly", "lerengPoly"],
     ["chk-geologi", "geologi"],
     ["chk-tanah", "tanah"],
+    ["chk-hujan", "idwHujan"],
     ["chk-idw-hujan", "idwHujan"],
     ["chk-area-dev", "areaDev"],
     ["chk-titik-dev", "titikDev"],
@@ -2251,14 +3203,17 @@
         if (key === "lerengPoly") state.activeLegendMode = "lereng";
         else if (key === "geologi") state.activeLegendMode = "geologi";
         else if (key === "tanah") state.activeLegendMode = "tanah";
+        else if (key === "idwHujan") state.activeLegendMode = "hujan";
       } else {
         map.removeLayer(lyr);
         const chkL = document.getElementById("chk-lereng-poly");
         const chkG = document.getElementById("chk-geologi");
         const chkT = document.getElementById("chk-tanah");
+        const chkH = document.getElementById("chk-hujan") || document.getElementById("chk-idw-hujan");
         if (chkL && chkL.checked) state.activeLegendMode = "lereng";
         else if (chkG && chkG.checked) state.activeLegendMode = "geologi";
         else if (chkT && chkT.checked) state.activeLegendMode = "tanah";
+        else if (chkH && chkH.checked) state.activeLegendMode = "hujan";
         else state.activeLegendMode = "triase";
       }
       updateLegend();

@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/Data/(.*)", "destination": "/Data/$1" },
+    { "source": "/", "destination": "/Web/index.html" },
+    { "source": "/(.*)", "destination": "/Web/$1" }
+  ]
+}

@@ -26,6 +26,10 @@ from spatial_loader import (
     muat_data_spasial_server,
     query_spasial_titik_backend,
 )
+from segment_analyzer import (
+    analyze_user_kavling,
+    muat_engine_fase2,
+)
 
 DEFAULT_PORTS = [int(os.getenv("PORT", "8000")), 8085, 8888, 5500, 3000]
 
@@ -43,8 +47,14 @@ def dapatkan_ip_lan():
 class LahanAmanHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Cache-Control", "no-cache")
         super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
 
     def _kirim_json(self, payload, status_code=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -53,6 +63,32 @@ class LahanAmanHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        route = parsed.path
+
+        if route == "/api/analisis-segmen-kavling":
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length <= 0:
+                    self._kirim_json(
+                        {"status": "error", "message": "Payload JSON kosong."},
+                        400,
+                    )
+                    return
+                raw_body = self.rfile.read(content_length).decode("utf-8")
+                payload = json.loads(raw_body)
+                hasil = analyze_user_kavling(payload)
+                self._kirim_json(hasil, 200)
+            except Exception as e:
+                self._kirim_json(
+                    {"status": "error", "message": str(e)},
+                    400,
+                )
+            return
+
+        self._kirim_json({"status": "error", "message": f"Endpoint POST tidak ditemukan: {route}"}, 404)
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -95,6 +131,7 @@ class LahanAmanHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     os.chdir(ROOT_DIR)
     muat_data_spasial_server()
+    muat_engine_fase2()
     handler = functools.partial(LahanAmanHandler, directory=str(ROOT_DIR))
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     ip_lan = dapatkan_ip_lan()

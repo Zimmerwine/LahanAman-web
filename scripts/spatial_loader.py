@@ -150,7 +150,7 @@ def cari_demnas_utm_tifs():
 
 def sampling_demnas_utm(x_arr, y_arr, radius_m=250.0):
     """
-    Baca data DEMNAS DIY UTM dalam EPSG:32749 pada koordinat (x_arr, y_arr)
+    Baca data DEMNAS DIY UTM & Raster Slope Kontinu dalam EPSG:32749 pada koordinat (x_arr, y_arr)
     dan hitung:
       - elevasi_titik_mdpl : elevasi piksel DEMNAS tepat di titik (mdpl)
       - elevasi_area_mdpl  : rerata elevasi dalam radius area jangkauan titik (mdpl)
@@ -158,8 +158,9 @@ def sampling_demnas_utm(x_arr, y_arr, radius_m=250.0):
       - lereng_area_persen : rerata kemiringan lereng dalam area jangkauan titik (%)
       - lereng_area_derajat: rerata kemiringan lereng dalam area jangkauan titik (derajat)
       - tile_demnas        : nama file tile DEMNAS UTM yang mencakup titik
+    Utamakan pembacaan dari raster master gabungan `Raster_Slope_Derajat_SlemanBantul.tif` dan
+    `Raster_DEMNAS_Elevasi_SlemanBantul.tif` bila titik berada di Kab. Sleman / Kab. Bantul.
     """
-    tifs = cari_demnas_utm_tifs()
     n = len(x_arr)
     elev_titik = np.full(n, np.nan, dtype=float)
     elev_area = np.full(n, np.nan, dtype=float)
@@ -167,6 +168,62 @@ def sampling_demnas_utm(x_arr, y_arr, radius_m=250.0):
     lereng_area = np.full(n, np.nan, dtype=float)
     lereng_derajat = np.full(n, np.nan, dtype=float)
     nama_tile = ["-" for _ in range(n)]
+
+    # 1. Prioritaskan Raster Master Gabungan Sleman-Bantul (Slope Kontinu Derajat & DEMNAS Elevasi)
+    slp_matches = glob.glob(str(EXTRACT_DIR / "**" / "Raster_Slope_Derajat_SlemanBantul.tif"), recursive=True)
+    dem_matches = glob.glob(str(EXTRACT_DIR / "**" / "Raster_DEMNAS_Elevasi_SlemanBantul.tif"), recursive=True)
+    if slp_matches and dem_matches:
+        try:
+            with rasterio.open(slp_matches[0]) as src_slp, rasterio.open(dem_matches[0]) as src_dem:
+                b = src_slp.bounds
+                res_x, res_y = abs(src_slp.transform.a), abs(src_slp.transform.e)
+                half_px = max(int(round(radius_m / max(res_x, res_y))), 1)
+                for i, (x, y) in enumerate(zip(x_arr, y_arr)):
+                    if not (b.left <= x <= b.right and b.bottom <= y <= b.top):
+                        continue
+                    row, col = src_slp.index(x, y)
+                    r0 = max(row - half_px, 0)
+                    c0 = max(col - half_px, 0)
+                    r1 = min(row + half_px + 1, src_slp.height)
+                    c1 = min(col + half_px + 1, src_slp.width)
+                    if r1 <= r0 or c1 <= c0:
+                        continue
+                    win = Window(c0, r0, c1 - c0, r1 - r0)
+                    arr_slp = src_slp.read(1, window=win).astype(float)
+                    arr_dem = src_dem.read(1, window=win).astype(float)
+                    arr_slp[(arr_slp <= -999.0) | np.isnan(arr_slp)] = np.nan
+                    arr_dem[(arr_dem <= 0.0) | (arr_dem <= -999.0) | np.isnan(arr_dem)] = np.nan
+                    if np.isnan(arr_slp).all() or np.isnan(arr_dem).all():
+                        continue
+
+                    yy, xx = np.ogrid[r0:r1, c0:c1]
+                    dist_m = np.hypot((xx - col) * res_x, (yy - row) * res_y)
+                    mask_slp = (dist_m <= max(radius_m, res_x * 1.5)) & ~np.isnan(arr_slp)
+                    mask_dem = (dist_m <= max(radius_m, res_x * 1.5)) & ~np.isnan(arr_dem)
+                    if not np.any(mask_slp) or not np.any(mask_dem):
+                        continue
+
+                    rc = min(max(row - r0, 0), arr_slp.shape[0] - 1)
+                    cc = min(max(col - c0, 0), arr_slp.shape[1] - 1)
+                    val_dem_c = arr_dem[rc, cc]
+                    val_slp_c = arr_slp[rc, cc]
+
+                    deg_mean = float(val_slp_c if (radius_m <= 25.0 and not np.isnan(val_slp_c)) else np.nanmean(arr_slp[mask_slp]))
+                    deg_pt = float(val_slp_c if not np.isnan(val_slp_c) else deg_mean)
+                    pct_mean = float(np.tan(np.radians(deg_mean)) * 100.0)
+                    pct_pt = float(np.tan(np.radians(deg_pt)) * 100.0)
+
+                    elev_titik[i] = float(val_dem_c if not np.isnan(val_dem_c) else np.nanmean(arr_dem[mask_dem]))
+                    elev_area[i] = float(np.nanmean(arr_dem[mask_dem]))
+                    lereng_titik[i] = pct_pt
+                    lereng_area[i] = pct_mean
+                    lereng_derajat[i] = deg_mean
+                    nama_tile[i] = "Raster_Slope_Derajat_SlemanBantul.tif"
+        except Exception:
+            pass
+
+    # 2. Fallback ke tile DEMNAS DIY UTM untuk titik di Kota Yogyakarta atau di luar clip Sleman-Bantul
+    tifs = cari_demnas_utm_tifs()
 
     for tif in tifs:
         with rasterio.open(tif) as src:
@@ -1170,15 +1227,34 @@ _DUSUN_TAMBAHAN_IKONIK = [
 
 def baca_layer_day8():
     """
-    Muat seluruh layer vektor geoteknik resmi dari folder DAY 8 dalam proyeksi EPSG:32749 (UTM 49S):
+    Muat seluruh layer vektor geoteknik resmi dari folder DAY 8 & Data/processed dalam proyeksi EPSG:32749 (UTM 49S):
       - lereng: GJS Layer1_Lereng_Geoteknik_Derajat.geojson
       - tanah: GJS Layer2_JenisTanah_SlemanBantul.geojson
       - geologi: GJS Layer3_Geologi_SlemanBantul.geojson
-      - hujan: GJS_Layer4_CurahHujan_SlemanBantul.geojson
-      - lahan: GJS Layer5_Tata Guna Lahan.geojson
-      - kerawanan_final: GJS Peta_Kerawanan_Longsor_SlemanBantul_Final.geojson
+      - hujan: clean_curah_hujan_idw.geojson (hasil standarisasi GJS_Layer4_CurahHujan_SlemanBantul.geojson)
+      - lahan: GJS Layer5_Tata Guna Lahan.geojson (beserta fallback clean_tutupan_lahan_diy.geojson)
+      - kerawanan_final: clean_kerawanan_longsor.geojson (Peta_Kerawanan_Longsor_SlemanBantul_Final.gpkg)
     """
     day8_layers = {}
+
+    # Utamakan clean_curah_hujan_idw.geojson yang sudah terstandarisasi dengan curah_hujan_mm, skor_hujan, rasio_m
+    p_hujan_clean = PROCESSED_DIR / "clean_curah_hujan_idw.geojson"
+    if p_hujan_clean.exists():
+        try:
+            gdf_h = gpd.read_file(p_hujan_clean)
+            day8_layers["hujan"] = gdf_h.to_crs(TARGET_CRS) if gdf_h.crs else gdf_h.set_crs("EPSG:4326").to_crs(TARGET_CRS)
+        except Exception as e:
+            print(f"  [!] Gagal membaca clean_curah_hujan_idw.geojson: {e}")
+
+    # Utamakan clean_kerawanan_longsor.geojson bila sudah diekspor
+    p_kr_clean = PROCESSED_DIR / "clean_kerawanan_longsor.geojson"
+    if p_kr_clean.exists():
+        try:
+            gdf_kr = gpd.read_file(p_kr_clean)
+            day8_layers["kerawanan_final"] = gdf_kr.to_crs(TARGET_CRS) if gdf_kr.crs else gdf_kr.set_crs("EPSG:4326").to_crs(TARGET_CRS)
+        except Exception as e:
+            print(f"  [!] Gagal membaca clean_kerawanan_longsor.geojson: {e}")
+
     pola_layer = {
         "lereng": "*Layer1_Lereng_Geoteknik_Derajat*.geojson",
         "tanah": "*Layer2_JenisTanah_SlemanBantul*.geojson",
@@ -1188,6 +1264,8 @@ def baca_layer_day8():
         "kerawanan_final": "*Peta_Kerawanan_Longsor_SlemanBantul_Final*.geojson",
     }
     for key, pattern in pola_layer.items():
+        if key in day8_layers and not day8_layers[key].empty:
+            continue
         matches = glob.glob(str(EXTRACT_DIR / "**" / pattern), recursive=True)
         if matches:
             try:
@@ -1199,6 +1277,16 @@ def baca_layer_day8():
                 day8_layers[key] = gdf
             except Exception as e:
                 print(f"  [!] Gagal membaca layer DAY 8 {key}: {e}")
+
+    # Muat juga clean_tutupan_lahan_diy.geojson sebagai pelengkap (mis. untuk Kota Yogyakarta)
+    p_lc_diy = PROCESSED_DIR / "clean_tutupan_lahan_diy.geojson"
+    if p_lc_diy.exists():
+        try:
+            gdf_lc = gpd.read_file(p_lc_diy)
+            day8_layers["tutupan_diy"] = gdf_lc.to_crs(TARGET_CRS) if gdf_lc.crs else gdf_lc.set_crs("EPSG:4326").to_crs(TARGET_CRS)
+        except Exception:
+            pass
+
     return day8_layers
 
 
@@ -1333,6 +1421,35 @@ def muat_katalog_dusun_diy(gdf_admin_utm=None, force_rebuild=False):
 
 
 # =====================================================================
+# TABEL PEMETAAN PARAMETER PROPERTI FISIK TANAH LOKAL DIY (ACUAN DASAR.XLSX)
+# =====================================================================
+TABEL_PROPERTI_FISIK_TANAH_DIY = (
+    (("grumosol", "grumusol"), 19.0, 2.25),
+    (("mediteran",), 18.5, 2.50),
+    (("latosol",), 18.5, 2.25),
+    (("regosol",), 17.5, 1.00),
+    (("kambisol",), 18.0, 2.00),
+    (("aluvial",), 18.5, 4.00),
+)
+DEFAULT_GAMMA_SAT = 18.0
+DEFAULT_Z_DEPTH = 2.00
+
+
+def ambil_properti_fisik_tanah_diy(nama_tanah):
+    """
+    Ambil nilai bobot isi jenuh (gamma_sat, kN/m3) dan kedalaman solum/bidang gelincir (z_depth, m)
+    berdasarkan pencocokan substring fleksibel terhadap nama tanah lokal DIY (Dasar.xlsx Sheet Internal).
+    Fallback default: gamma_sat = 18.0 kN/m3, z_depth = 2.00 m.
+    """
+    tanah_clean = str(nama_tanah or "").strip().lower()
+    if tanah_clean:
+        for kata_kunci_tuple, gamma_val, z_val in TABEL_PROPERTI_FISIK_TANAH_DIY:
+            if any(k in tanah_clean for k in kata_kunci_tuple):
+                return float(gamma_val), float(z_val)
+    return float(DEFAULT_GAMMA_SAT), float(DEFAULT_Z_DEPTH)
+
+
+# =====================================================================
 # ENGINE PENILAIAN GEOTEKNIK & TRIASE BACKEND (ACUAN DAY 8)
 # =====================================================================
 def evaluasi_geoteknik_day8_backend(
@@ -1350,6 +1467,7 @@ def evaluasi_geoteknik_day8_backend(
     c_kpa_override=None,
     phi_deg_override=None,
     rasio_m_override=None,
+    nama_tanah=None,
 ):
     """
     Proses kalkulasi penilaian geoteknik & triase murni di sisi backend (silent calculation)
@@ -1421,7 +1539,8 @@ def evaluasi_geoteknik_day8_backend(
     kelas_lereng = label_lereng_map.get(skor_lereng, label_lereng_map[1])
 
     # 2. Karakteristik Tanah Penutup / Pedologi (15%)
-    t_low = str(jenis_tanah_str or "").lower()
+    tanah_sumber = nama_tanah if (nama_tanah is not None and str(nama_tanah).strip()) else jenis_tanah_str
+    t_low = str(tanah_sumber or "").strip().lower()
     is_expansive = False
     if "grumosol" in t_low or "grumusol" in t_low or "ekspansif" in t_low or "vertisol" in t_low or "montmorillonit" in t_low or "montmorilonit" in t_low or "smektit" in t_low:
         skor_tanah = 5
@@ -1431,7 +1550,14 @@ def evaluasi_geoteknik_day8_backend(
         is_expansive = True
     elif "latosol" in t_low or "mediteran" in t_low or "andosol" in t_low or "litosol" in t_low:
         skor_tanah = 4
-        nama_tanah = "Latosol & Mediteran" if ("latosol" in t_low or "mediteran" in t_low) else str(jenis_tanah_str)
+        if "mediteran" in t_low and "latosol" not in t_low:
+            nama_tanah = "Mediteran"
+        elif "latosol" in t_low and "mediteran" not in t_low:
+            nama_tanah = "Latosol"
+        elif "latosol" in t_low or "mediteran" in t_low:
+            nama_tanah = "Latosol & Mediteran"
+        else:
+            nama_tanah = str(tanah_sumber)
         ket_tanah = "Tanah pelapukan lanjut solum tebal (>2 m), jenuh air saat hujan lebat"
         c_kpa, phi_deg = 10.0, 18.0
     elif "kambisol" in t_low or "inceptisol" in t_low:
@@ -1446,7 +1572,7 @@ def evaluasi_geoteknik_day8_backend(
         c_kpa, phi_deg = 14.0, 25.0
     else:
         skor_tanah = 3
-        nama_tanah = "Regosol (Pasir Vulkanik)" if "regosol" in t_low or not jenis_tanah_str else str(jenis_tanah_str)
+        nama_tanah = "Regosol (Pasir Vulkanik)" if "regosol" in t_low or not tanah_sumber else str(tanah_sumber)
         ket_tanah = "Pasir vulkanik lepas/sarang (kohesi rendah), permeabilitas tinggi namun peka gerusan air"
         c_kpa, phi_deg = 3.5, 36.0
 
@@ -1529,56 +1655,48 @@ def evaluasi_geoteknik_day8_backend(
     if rasio_m_override is not None and 0.0 < float(rasio_m_override) <= 1.0:
         rasio_m = float(rasio_m_override)
 
-    # 5. Tutupan Lahan (15%)
+    # 5. Tutupan Lahan RBI (Bobot 10% sesuai GPKG/GJS Layer5_Tata Guna Lahan)
     l_low = str(tutupan_str or "").lower()
-    if any(k in l_low for k in ["terbuka", "tegalan", "ladang", "pasir"]):
+    if any(k in l_low for k in ["sawah", "tegalan", "ladang", "terbuka", "pasir"]):
         skor_tutupan = 5
-        nama_tutupan = str(tutupan_str) if tutupan_str else "Tegalan / Lahan Terbuka"
-        ket_tutupan = "Minim kanopi pelindung; infiltrasi & limpasan permukaan langsung menggerus tanah"
-    elif "sawah" in l_low:
-        if lereng_deg > 8.0:
-            skor_tutupan = 5
-            nama_tutupan = "Sawah Lereng Miring"
-            ket_tutupan = "Persawahan pada lereng miring meningkatkan penjenuhan air pori secara menerus"
-        else:
-            skor_tutupan = 3
-            nama_tutupan = "Sawah Dataran"
-            ket_tutupan = "Persawahan dataran terkelola dengan genangan air musiman"
-    elif any(k in l_low for k in ["semak", "belukar", "rumput", "alang"]):
+        nama_tutupan = str(tutupan_str) if tutupan_str else "Tegalan/Ladang"
+        ket_tutupan = f"{nama_tutupan} (Tanpa Akar Dalam & Infiltrasi Tinggi - Sangat Rawan)"
+    elif any(k in l_low for k in ["semak", "belukar", "rumput", "tanah kosong", "alang"]):
         skor_tutupan = 4
-        nama_tutupan = str(tutupan_str) if tutupan_str else "Semak Belukar / Padang Rumput"
-        ket_tutupan = "Perakaran dangkal; penahan erosi permukaan sedang"
-    elif any(k in l_low for k in ["kebun", "perkebunan", "campur", "vegetasi"]):
+        nama_tutupan = str(tutupan_str) if tutupan_str else "Semak/Belukar"
+        ket_tutupan = f"{nama_tutupan} (Akar Dangkal <0.3m & Penahan Air Lemah - Rawan)"
+    elif any(k in l_low for k in ["kebun", "perkebunan", "campur"]):
         skor_tutupan = 2
-        nama_tutupan = str(tutupan_str) if tutupan_str else "Perkebunan / Kebun Campuran"
-        ket_tutupan = "Tajuk rapat dan perakaran pohon membantu menjaga stabilitas tanah dangkal"
-    elif any(k in l_low for k in ["hutan", "air", "sungai", "danau", "waduk"]):
+        nama_tutupan = str(tutupan_str) if tutupan_str else "Kebun"
+        ket_tutupan = f"{nama_tutupan} (Kohesi Akar Pohon Sedang 2-5 kPa - Rendah)"
+    elif any(k in l_low for k in ["hutan", "air", "sungai", "danau", "waduk", "kolam", "tambak"]):
         skor_tutupan = 1
-        nama_tutupan = str(tutupan_str) if tutupan_str else "Hutan Lindung / Tubuh Air"
-        ket_tutupan = "Zona konservasi vegetasi rapat / badan air alami"
+        nama_tutupan = str(tutupan_str) if tutupan_str else "Hutan Lindung"
+        ket_tutupan = f"{nama_tutupan} (Perakaran Dalam / Badan Air Datar - Aman)"
     else:
         skor_tutupan = 3
-        nama_tutupan = str(tutupan_str) if tutupan_str else "Permukiman dan Tempat Kegiatan"
-        ket_tutupan = "Kawasan terbangun & jaringan jalan dengan beban konstruksi di permukaan"
+        nama_tutupan = str(tutupan_str) if tutupan_str else "Permukiman"
+        ket_tutupan = f"{nama_tutupan} (Beban Konstruksi/Surcharge Lereng - Sedang)"
 
     if skor_tutupan_override is not None and 1 <= int(skor_tutupan_override) <= 5:
         skor_tutupan = int(skor_tutupan_override)
 
-    # Akumulasi Skor Akhir (Silent di Backend)
+    # Akumulasi Skor Akhir sesuai GPKG/GeoJSON Peta_Kerawanan_Longsor_SlemanBantul_Final:
+    # skor_akhir = 0.30 * skor_lereng + 0.25 * skor_tanah + 0.20 * skor_batuan + 0.15 * skor_hujan + 0.10 * skor_lahan
     skor_akhir = round(
         0.30 * skor_lereng
-        + 0.15 * skor_tanah
+        + 0.25 * skor_tanah
         + 0.20 * skor_batuan
-        + 0.20 * skor_hujan
-        + 0.15 * skor_tutupan,
+        + 0.15 * skor_hujan
+        + 0.10 * skor_tutupan,
         2,
     )
 
     # Estimasi Faktor Keamanan Murni (Factor of Safety / FS Terzaghi Tanpa Manipulasi):
     # FS = [c' + (gamma_sat * z - m * gamma_w * z) * cos^2(beta) * tan(phi')] / [gamma_sat * z * sin(beta) * cos(beta)]
-    gamma_sat = 18.0
+    nama_tanah_clean = str(tanah_sumber or "").strip().lower()
+    gamma_sat, z_depth = ambil_properti_fisik_tanah_diy(nama_tanah_clean)
     gamma_w = 9.81
-    z_depth = 2.0
     beta_calc = max(float(lereng_deg), 1.0)  # proteksi beta_min = 1.0 derajat agar tidak pembagian nol pada tanah datar
     beta_rad = math.radians(beta_calc)
     phi_rad = math.radians(phi_deg)
@@ -1589,22 +1707,38 @@ def evaluasi_geoteknik_day8_backend(
     driving = gamma_sat * z_depth * sin_b * cos_b
     fs_val = round(shear_res / driving, 2)
 
-    # Klasifikasi Status Triase & Warna sesuai spesifikasi DAY 8 (5 Parameter Berbobot):
-    # - Zona Merah (#EF4444): Skor Akhir > 3.40
-    # - Zona Hijau (#10B981): Skor Akhir < 2.20 atau lereng datar (0°–8°) tanpa lempung ekspansif
-    # - Zona Kuning (#F59E0B): Skor Akhir 2.20 – 3.40
-    if skor_akhir > 3.40:
+    # Klasifikasi Skoring & Warna Asli sesuai Peta_Kerawanan_Longsor_SlemanBantul_Final.gpkg & Tabel 5.2 Hari 7:
+    # 1. ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil): #2E7D32 (skor_lereng == 1 non-Grumusol)
+    # 2. ZONA HIJAU (Risiko Rendah - Konstruksi Standar): #66BB6A (skor_akhir < 2.20 pada skor_lereng > 1)
+    # 3. ZONA KUNING (Datar - Waspada Lempung Ekspansif / Pondasi): #FFB300 (skor_lereng == 1 & Grumusol)
+    # 4. ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud & RAB): #FB8C00 (skor_akhir 2.20 s.d. 3.40)
+    # 5. ZONA MERAH (Risiko Tinggi - Rawan Longsor & Wajib Uji Sondir): #D32F2F (skor_akhir > 3.40 atau skor_lereng >= 5)
+    if lereng_deg <= 8.0 and skor_lereng == 1:
+        if is_expansive:
+            zona = "Zona Kuning"
+            zona_triase = "ZONA KUNING (Datar - Waspada Lempung Ekspansif / Pondasi)"
+            badge = f"SKOR {skor_akhir:.2f} — {zona_triase}"
+            warna_hex = "#FFB300"
+        else:
+            zona = "Zona Hijau"
+            zona_triase = "ZONA HIJAU (Risiko Rendah - Lahan Datar Stabil)"
+            badge = f"SKOR {skor_akhir:.2f} — {zona_triase}"
+            warna_hex = "#2E7D32"
+    elif skor_akhir > 3.40 or lereng_deg > 35.0 or skor_lereng >= 5:
         zona = "Zona Merah"
-        badge = "ZONA MERAH (BAHAYA KRITIS)"
-        warna_hex = "#EF4444"
-    elif skor_akhir < 2.20 or (lereng_deg <= 8.0 and not is_expansive):
+        zona_triase = "ZONA MERAH (Risiko Tinggi - Rawan Longsor & Wajib Uji Sondir)"
+        badge = f"SKOR {skor_akhir:.2f} — {zona_triase}"
+        warna_hex = "#D32F2F"
+    elif skor_akhir < 2.20:
         zona = "Zona Hijau"
-        badge = "ZONA HIJAU (AMAN)"
-        warna_hex = "#10B981"
+        zona_triase = "ZONA HIJAU (Risiko Rendah - Konstruksi Standar)"
+        badge = f"SKOR {skor_akhir:.2f} — {zona_triase}"
+        warna_hex = "#66BB6A"
     else:
         zona = "Zona Kuning"
-        badge = "ZONA KUNING (PERLU MITIGASI)"
-        warna_hex = "#F59E0B"
+        zona_triase = "ZONA KUNING (Risiko Sedang - Perlu Mitigasi Drainase/Talud & RAB)"
+        badge = f"SKOR {skor_akhir:.2f} — {zona_triase}"
+        warna_hex = "#FB8C00"
 
     # Evaluasi Indikator Kestabilan Lereng (FS) secara independen & jujur terhadap kondisi fisik
     if fs_val >= 1.50:
@@ -1722,12 +1856,16 @@ def evaluasi_geoteknik_day8_backend(
         },
         "triase": {
             "zona": zona,
+            "zona_triase": zona_triase,
+            "skor_akhir": skor_akhir,
             "badge": badge,
             "warna_hex": warna_hex,
             "fs": fs_val,
             "fs_label": fs_label,
             "fs_desc": fs_desc,
             "fs_pct": fs_pct,
+            "gamma_sat": round(float(gamma_sat), 2),
+            "z_depth": round(float(z_depth), 2),
         },
         "kondisi_lapangan": {
             "lereng_derajat": round(lereng_deg, 2),
@@ -1735,9 +1873,15 @@ def evaluasi_geoteknik_day8_backend(
             "kelas_lereng": kelas_lereng,
             "jenis_tanah": nama_tanah,
             "ket_tanah": ket_tanah,
+            "c_kpa": round(float(c_kpa), 2),
+            "phi_deg": round(float(phi_deg), 2),
+            "gamma_sat": round(float(gamma_sat), 2),
+            "z_depth": round(float(z_depth), 2),
             "formasi_batuan": nama_batuan,
             "ket_batuan": ket_batuan,
             "curah_hujan_mm": round(ch_val, 0),
+            "skor_hujan": int(skor_hujan),
+            "rasio_m": round(float(rasio_m), 2),
             "kelas_hujan": kelas_hujan,
             "tutupan_lahan": nama_tutupan,
             "ket_tutupan": ket_tutupan,
@@ -1955,17 +2099,27 @@ def query_spasial_titik_backend(lat, lng, dusun_hint=None):
         else:
             nama_dusun = format_nama_dusun_asli(kalurahan, kabupaten)
 
-    # Ambil nilai dasar dari poligon Kalurahan & ekstraksi piksel kontinu DEMNAS (EPSG:32749)
+    # Ambil nilai dasar dari poligon Kalurahan & ekstraksi piksel kontinu DEMNAS / Raster Slope (EPSG:32749)
     lereng_deg = float(row_adm.get("lereng_derajat", 4.0))
     lereng_pct = float(row_adm.get("lereng_persen", 7.0))
     skor_lereng = int(row_adm.get("skor_lereng", 1))
     try:
-        dem_pt = sampling_demnas_utm(np.array([x_utm]), np.array([y_utm]), radius_m=50.0)
+        dem_pt = sampling_demnas_utm(np.array([x_utm]), np.array([y_utm]), radius_m=20.0)
         if not np.isnan(dem_pt["elevasi_titik_mdpl"][0]):
             elevasi_mdpl = float(dem_pt["elevasi_titik_mdpl"][0])
         if not np.isnan(dem_pt["lereng_area_derajat"][0]) and not np.isnan(dem_pt["lereng_area_persen"][0]):
             lereng_deg = float(dem_pt["lereng_area_derajat"][0])
             lereng_pct = float(dem_pt["lereng_area_persen"][0])
+            if lereng_deg <= 8.0:
+                skor_lereng = 1
+            elif lereng_deg <= 15.0:
+                skor_lereng = 2
+            elif lereng_deg <= 25.0:
+                skor_lereng = 3
+            elif lereng_deg <= 35.0:
+                skor_lereng = 4
+            else:
+                skor_lereng = 5
     except Exception:
         pass
 
@@ -1975,14 +2129,13 @@ def query_spasial_titik_backend(lat, lng, dusun_hint=None):
     phi_deg = None
     formasi_batuan = str(row_adm.get("formasi_batuan", "Formasi Gunungapi Merapi Muda (Qmi)"))
     skor_batuan = int(row_adm.get("skor_batuan", 2))
-    ch_mm = float(row_adm.get("ch_idw_mm", 2200.0))
+    ch_mm = float(row_adm.get("ch_idw_mm", 2394.0))
     skor_hujan = int(row_adm.get("skor_hujan", 3))
     rasio_m = None
     tutupan_lahan = str(row_adm.get("tutupan_dominan", "Permukiman dan Tempat Kegiatan"))
     skor_tutupan = int(row_adm.get("skor_tutupan", 3))
 
-    # Query langsung ke Layer Vektor Spesifik DAY 8 pada titik (x_utm, y_utm) bila tersedia
-    # CATATAN: Skor lereng 1 s.d. 5 hanya digunakan untuk bobot kerawanan makro, TIDAK menimpa lereng_deg/lereng_pct asli DEMNAS
+    # Query Point-in-Polygon lengkap ke 5 Parameter Aktual DAY 8 pada titik (x_utm, y_utm)
     d8 = cache.get("day8_layers", {})
     if "lereng" in d8 and not d8["lereng"].empty:
         hit = d8["lereng"][d8["lereng"].geometry.contains(pt_utm)]
@@ -2000,6 +2153,8 @@ def query_spasial_titik_backend(lat, lng, dusun_hint=None):
                 jenis_tanah = str(r8.get("jns_tnh")).strip()
             if pd.notna(r8.get("skor tanah")):
                 skor_tanah = int(r8.get("skor tanah"))
+            elif pd.notna(r8.get("skor_tanah")):
+                skor_tanah = int(r8.get("skor_tanah"))
             if pd.notna(r8.get("c_kpa")):
                 c_kpa = float(r8.get("c_kpa"))
             if pd.notna(r8.get("phi_deg")):
@@ -2023,24 +2178,43 @@ def query_spasial_titik_backend(lat, lng, dusun_hint=None):
         hit = d8["hujan"][d8["hujan"].geometry.contains(pt_utm)]
         if not hit.empty:
             r8 = hit.iloc[0]
+            if pd.notna(r8.get("curah_hujan_mm")):
+                ch_mm = float(r8.get("curah_hujan_mm"))
+            elif pd.notna(r8.get("ch_idw_rerata_mm")):
+                ch_mm = float(r8.get("ch_idw_rerata_mm"))
             if pd.notna(r8.get("skor_hujan")):
                 skor_hujan = int(r8.get("skor_hujan"))
+            elif pd.notna(r8.get("skor")):
+                skor_hujan = int(r8.get("skor"))
             if pd.notna(r8.get("rasio_m")):
                 rasio_m = float(r8.get("rasio_m"))
 
+    lahan_matched = False
     if "lahan" in d8 and not d8["lahan"].empty:
         hit = d8["lahan"][d8["lahan"].geometry.contains(pt_utm)]
         if not hit.empty:
             r8 = hit.iloc[0]
             if pd.notna(r8.get("pl")):
                 tutupan_lahan = str(r8.get("pl")).strip()
+                lahan_matched = True
             if pd.notna(r8.get("skor_lahan")):
                 skor_tutupan = int(r8.get("skor_lahan"))
+                lahan_matched = True
+
+    if not lahan_matched and "tutupan_diy" in d8 and not d8["tutupan_diy"].empty:
+        hit_lc = d8["tutupan_diy"][d8["tutupan_diy"].geometry.contains(pt_utm)]
+        if not hit_lc.empty:
+            rlc = hit_lc.iloc[0]
+            if pd.notna(rlc.get("klasifikasi")):
+                tutupan_lahan = str(rlc.get("klasifikasi")).strip()
+            if pd.notna(rlc.get("skor")):
+                skor_tutupan = int(rlc.get("skor"))
 
     eval_res = evaluasi_geoteknik_day8_backend(
         lereng_deg=lereng_deg,
         lereng_pct=lereng_pct,
         jenis_tanah_str=jenis_tanah,
+        nama_tanah=jenis_tanah,
         formasi_batuan_str=formasi_batuan,
         ch_mm=ch_mm,
         tutupan_str=tutupan_lahan,
@@ -2078,6 +2252,7 @@ def query_spasial_titik_backend(lat, lng, dusun_hint=None):
             "luas_ha": round(luas_ha, 2),
             "elevasi_mdpl": round(elevasi_mdpl, 1),
         },
+        "skor_internal": eval_res["skor_internal"],
         "triase": eval_res["triase"],
         "kondisi_lapangan": eval_res["kondisi_lapangan"],
         "rekomendasi_ai": eval_res["rekomendasi_ai"],
