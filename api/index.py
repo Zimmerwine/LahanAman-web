@@ -14,21 +14,6 @@ PROCESSED_DIR = ROOT_DIR / "Data" / "processed"
 os.chdir(ROOT_DIR)
 
 app = Flask(__name__)
-WEB_DIR = ROOT_DIR / "Web"
-
-@app.route('/')
-def home():
-    return send_from_directory(WEB_DIR, 'index.html')
-
-@app.route('/<path:filename>')
-def serve_static(filename):
-    # Cek apakah file ada di folder Web/
-    if (WEB_DIR / filename).exists():
-        return send_from_directory(WEB_DIR, filename)
-    # Cek apakah memanggil data dari folder Data/processed/
-    if (PROCESSED_DIR / filename).exists():
-        return send_from_directory(PROCESSED_DIR, filename)
-    return "File tidak ditemukan", 404
 
 # Tambahkan CORS Header untuk setiap respons
 @app.after_request
