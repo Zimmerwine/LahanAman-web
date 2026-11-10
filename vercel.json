@@ -4,14 +4,10 @@
     "api/index.py": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "public/data/**"
+      "includeFiles": "{public/**,Web/**}"
     }
   },
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.py" },
-    { "src": "/Data/processed/(.*)", "dest": "/public/data/$1" },
-    { "src": "/public/data/(.*)", "dest": "/public/data/$1" },
-    { "src": "/", "dest": "/Web/index.html" },
-    { "src": "/(.*)", "dest": "/Web/$1" }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index.py" }
   ]
 }

@@ -8,14 +8,20 @@ from flask import Flask, request, jsonify, send_from_directory
 # 1. Konfigurasi path
 API_DIR = Path(__file__).resolve().parent
 ROOT_DIR = API_DIR.parent
-PROCESSED_DIR = ROOT_DIR / "Data" / "processed"
+WEB_DIR = ROOT_DIR / "Web"
 
-# Pindah working directory ke root
+# Arahkan ke public/data (dengan fallback ke Data/processed jika masih ada)
+if (ROOT_DIR / "public" / "data").exists():
+    DATA_DIR = ROOT_DIR / "public" / "data"
+elif (ROOT_DIR / "Data" / "processed").exists():
+    DATA_DIR = ROOT_DIR / "Data" / "processed"
+else:
+    DATA_DIR = ROOT_DIR / "public" / "data"
+
 os.chdir(ROOT_DIR)
 
 app = Flask(__name__)
 
-# Tambahkan CORS Header untuk setiap respons
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -23,11 +29,12 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-# 2. In-Memory Cache Dataset GeoJSON Siap Pakai
+# 2. In-Memory Cache Dataset
 DATA_CACHE = {
     "loaded": False,
     "admin": [],
     "kerawanan": [],
+    "dusun": [],
 }
 
 def load_processed_data():
@@ -35,23 +42,28 @@ def load_processed_data():
         return
 
     # A. Muat clean_batas_administrasi.geojson
-    p_adm = PROCESSED_DIR / "clean_batas_administrasi.geojson"
+    p_adm = DATA_DIR / "clean_batas_administrasi.geojson"
     if p_adm.exists():
         with open(p_adm, "r", encoding="utf-8") as f:
             DATA_CACHE["admin"] = json.load(f).get("features", [])
 
     # B. Muat clean_kerawanan_longsor.geojson
-    p_kr = PROCESSED_DIR / "clean_kerawanan_longsor.geojson"
+    p_kr = DATA_DIR / "clean_kerawanan_longsor.geojson"
     if p_kr.exists():
         with open(p_kr, "r", encoding="utf-8") as f:
             DATA_CACHE["kerawanan"] = json.load(f).get("features", [])
 
+    # C. Muat katalog_dusun_diy.json
+    p_ds = DATA_DIR / "katalog_dusun_diy.json"
+    if p_ds.exists():
+        with open(p_ds, "r", encoding="utf-8") as f:
+            DATA_CACHE["dusun"] = json.load(f)
+
     DATA_CACHE["loaded"] = True
 
-# Muat data saat fungsi serverless diinisialisasi
 load_processed_data()
 
-# 3. Utilitas Geometri Ringan (Tanpa ketergantungan GDAL/Rasterio)
+# 3. Utilitas Geometri
 def point_in_ring(x, y, ring):
     inside = False
     n = len(ring)
@@ -89,7 +101,7 @@ def point_in_geometry(x, y, geom):
     return False
 
 # =====================================================================
-# ENDPOINT 1: /api/query (Inspeksi Titik Peta)
+# ENDPOINT API
 # =====================================================================
 @app.route('/api/query', methods=['GET'])
 def endpoint_query():
@@ -98,7 +110,6 @@ def endpoint_query():
         lng = float(request.args.get("lng", "110.370529"))
         dusun_hint = request.args.get("dusun", "").strip()
 
-        # 1. Cari kalurahan berdasarkan batas administrasi
         adm_hit = None
         for feat in DATA_CACHE["admin"]:
             if point_in_geometry(lng, lat, feat.get("geometry")):
@@ -108,7 +119,6 @@ def endpoint_query():
         if not adm_hit and DATA_CACHE["admin"]:
             adm_hit = DATA_CACHE["admin"][0].get("properties", {})
 
-        # 2. Cari data kerawanan spesifik pada titik tersebut
         kr_hit = None
         for feat in DATA_CACHE["kerawanan"]:
             if point_in_geometry(lng, lat, feat.get("geometry")):
@@ -118,7 +128,6 @@ def endpoint_query():
         if not kr_hit:
             kr_hit = adm_hit or {}
 
-        # 3. Susun data respons yang sesuai dengan format app.js
         kalurahan = adm_hit.get("kalurahan", "-")
         kapanewon = adm_hit.get("kapanewon", "-")
         kabupaten = adm_hit.get("kabupaten", "Kab. Sleman")
@@ -149,7 +158,6 @@ def endpoint_query():
         lereng_deg = float(adm_hit.get("lereng_derajat", 4.5))
         rasio_m = float(kr_hit.get("rasio_m", 0.60))
 
-        # Hitung FS Terzaghi sederhana
         gamma_sat = 18.0
         z_depth = 2.0
         beta_rad = math.radians(max(lereng_deg, 1.0))
@@ -204,9 +212,6 @@ def endpoint_query():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
-# =====================================================================
-# ENDPOINT 2: /api/analisis-segmen-kavling (Pemotongan Poligon Kavling)
-# =====================================================================
 @app.route('/api/analisis-segmen-kavling', methods=['POST'])
 def endpoint_analisis():
     try:
@@ -230,7 +235,6 @@ def endpoint_analisis():
             "Merah": {"luas_m2": 0.0, "persen": 0.0},
         }
 
-        # Potong poligon user terhadap layer clean_kerawanan_longsor
         for feat in DATA_CACHE["kerawanan"]:
             kr_poly = shp_shape(feat["geometry"])
             if user_poly.intersects(kr_poly):
@@ -239,7 +243,6 @@ def endpoint_analisis():
                     continue
 
                 p = feat["properties"]
-                # Konversi kasar derajat luas ke m2 di area DIY (~111.320 m per derajat)
                 luas_m2 = round(inter.area * (111320.0 ** 2) * math.cos(math.radians(-7.8)), 1)
                 persen_luas = round((inter.area / total_area_deg) * 100.0, 1)
 
@@ -291,3 +294,56 @@ def endpoint_analisis():
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
+
+@app.route('/api/search', methods=['GET'])
+def endpoint_search():
+    try:
+        q = request.args.get("q", "").strip().lower()
+        kab = request.args.get("kab", "ALL")
+        zona = request.args.get("zona", "ALL")
+        limit = int(request.args.get("limit", "60"))
+
+        results = []
+        for item in DATA_CACHE.get("dusun", []):
+            kab_item = str(item.get("kabupaten", ""))
+            zona_item = str(item.get("status_zona", ""))
+            if kab != "ALL" and kab.lower() not in kab_item.lower():
+                continue
+            if zona != "ALL" and zona.lower() not in zona_item.lower():
+                continue
+            nama = str(item.get("nama", "")).lower()
+            kel = str(item.get("kelurahan", "")).lower()
+            kec = str(item.get("kapanewon", "")).lower()
+            if q and (q not in nama and q not in kel and q not in kec):
+                continue
+            results.append(item)
+            if len(results) >= limit:
+                break
+        return jsonify({"status": "ok", "results": results, "count": len(results)}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+# =====================================================================
+# ROUTING HALAMAN WEB & ASET STATIS (BEBAS 404)
+# =====================================================================
+@app.route('/')
+def home():
+    return send_from_directory(WEB_DIR, 'index.html')
+
+@app.route('/Web/<path:filename>')
+def serve_web_dir(filename):
+    return send_from_directory(WEB_DIR, filename)
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    if (WEB_DIR / filename).exists():
+        return send_from_directory(WEB_DIR, filename)
+    if (DATA_DIR / filename).exists():
+        return send_from_directory(DATA_DIR, filename)
+    if (ROOT_DIR / "public" / filename).exists():
+        return send_from_directory(ROOT_DIR / "public", filename)
+    if filename.startswith("Data/processed/"):
+        clean_name = filename.replace("Data/processed/", "")
+        if (DATA_DIR / clean_name).exists():
+            return send_from_directory(DATA_DIR, clean_name)
+    return "File tidak ditemukan", 404
