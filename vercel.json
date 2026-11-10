@@ -7,12 +7,11 @@
       "includeFiles": "public/data/**"
     }
   },
-  "redirects": [
-    { "source": "/", "destination": "/Web/index.html", "permanent": false }
-  ],
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.py" },
-    { "source": "/Data/processed/(.*)", "destination": "/public/data/$1" },
-    { "source": "/Data/(.*)", "destination": "/public/data/$1" }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/Data/processed/(.*)", "dest": "/public/data/$1" },
+    { "src": "/public/data/(.*)", "dest": "/public/data/$1" },
+    { "src": "/", "dest": "/Web/index.html" },
+    { "src": "/(.*)", "dest": "/Web/$1" }
   ]
 }
