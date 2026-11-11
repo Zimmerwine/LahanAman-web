@@ -1,7 +1,7 @@
 scripts/
 scratch/
 tests/
-Data/raw/
+Data/
 **/__pycache__/
 *.pyc
 .git

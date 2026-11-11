@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LahanAman GeoAnalytics DIY — WebGIS Triase Geoteknik &amp; Kelayakan Lahan</title>
+  <title>LahanAman GeoAnalytics DIY — Enterprise Geotechnical &amp; Slope Stability Dashboard</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Leaflet-Geoman CSS (Drawing Tool Fase 2) -->
+  <!-- Leaflet-Geoman CSS -->
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
+  <!-- Tailwind CSS CDN for Enterprise Geospatial Utility Classes -->
+  <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,33 +27,33 @@
         <div class="brand-heading">
           <h1>LahanAman GeoAnalytics DIY</h1>
           <span class="crs-badge" title="Standar Perhitungan Spasial: EPSG:32749 (UTM Zone 49S)">UTM 49S: EPSG:32749</span>
-          <span class="crs-badge crs-badge-wgs" title="Visualisasi Peta Dasar: EPSG:4326 (WGS 84)">Peta: EPSG:4326</span>
+          <span class="crs-badge crs-badge-wgs" title="Visualisasi Peta Dasar: EPSG:4326 (WGS 84)">WGS84: EPSG:4326</span>
         </div>
-        <p>Sistem Cerdas Triase Geoteknik, Kestabilan Lereng &amp; Rekomendasi Kelayakan Lahan Tingkat Dusun DIY</p>
+        <p>Sistem Analisis Kestabilan Lereng (Infinite Slope FS) &amp; Kelayakan Perumahan Berbasis Data Mekanika Tanah DIY</p>
       </div>
     </div>
 
     <div class="topbar-stats">
-      <div class="stat-pill" title="ZONA HIJAU (Skor &lt; 2,20 | Risiko Rendah - Lahan Datar Stabil / Konstruksi Standar)">
+      <div class="stat-pill" title="ZONA HIJAU (Skor &lt; 2,20 | Datar / Risiko Rendah / Konstruksi Standar)">
         <span class="dot" style="background:#2E7D32;"></span>
-        <span>Skor Hijau (&lt;2,20 / Datar): <b id="stat-hijau">0</b></span>
+        <span>Skor Hijau (&lt;2,20): <b id="stat-hijau">0</b></span>
       </div>
-      <div class="stat-pill" title="ZONA KUNING (Skor 2,20–3,40 | Risiko Sedang - Perlu Mitigasi Drainase/Talud &amp; RAB / Lempung Ekspansif)">
+      <div class="stat-pill" title="ZONA KUNING (Skor 2,20–3,40 | Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud)">
         <span class="dot" style="background:#FB8C00;"></span>
         <span>Skor Kuning (2,20–3,40): <b id="stat-kuning">0</b></span>
       </div>
-      <div class="stat-pill" title="ZONA MERAH (Skor &gt; 3,40 | Risiko Tinggi - Rawan Longsor &amp; Wajib Uji Sondir)">
+      <div class="stat-pill" title="ZONA MERAH (Skor &gt; 3,40 | Risiko Tinggi / Rawan Longsor / Non-Buildable)">
         <span class="dot" style="background:#D32F2F;"></span>
         <span>Skor Merah (&gt;3,40): <b id="stat-merah">0</b></span>
       </div>
     </div>
 
     <div class="topbar-actions">
-      <button class="btn btn-draw-kavling" id="btn-draw-kavling-top" title="Gambar Poligon Kavling Lahan untuk Analisis Segmentasi Zona &amp; Raster">
+      <button class="btn btn-draw-kavling" id="btn-draw-kavling-top" title="Gambar Poligon Kavling Lahan untuk Analisis Segmentasi Zona &amp; Lereng DEMNAS">
         ✏️ Gambar Poligon Kavling
       </button>
-      <button class="btn" id="btn-clear-selection" title="Bersihkan sorotan poligon (Clean Map State)">
-        🧹 Peta Bersih
+      <button class="btn" id="btn-clear-selection" title="Reset Poligon Kavling &amp; Bersihkan Sorotan Peta">
+        🗑️ Reset Kavling
       </button>
       <button class="btn btn-primary" id="btn-reset-view" title="Tampilkan jangkauan wilayah DIY">
         🎯 Reset DIY
@@ -59,52 +61,81 @@
     </div>
   </header>
 
-  <!-- MAIN WORKSPACE -->
+  <!-- MAIN WORKSPACE (Grid: 320px Left Sidebar | 1fr Map | 380px Right Sidebar) -->
   <main class="workspace">
 
-    <!-- LEFT SIDEBAR: MULTI-LEVEL DUSUN SEARCH, COORDINATE INSPECTOR & BASEMAP -->
+    <!-- LEFT SIDEBAR (Lebar 320px): FILTER ADMINISTRASI HIERARKIS DI ATAS, KONTROL LAYER SPASIAL DI BAWAHNYA -->
     <aside class="sidebar-left">
-      <div class="panel-scroll">
+      <div class="panel-scroll custom-thin-scrollbar">
 
-        <!-- PENCARIAN MULTI-LEVEL PRESISI HINGGA DUSUN / PADUKUHAN -->
+        <!-- 1. FILTER ADMINISTRASI HIERARKIS (PENGGANTI PENCARIAN DUSUN) -->
         <div class="section-card">
           <div class="section-title">
-            <span>🔍 Pencarian Dusun &amp; Wilayah</span>
-            <span id="filter-count-badge" class="badge-count">Multi-Level</span>
+            <span>🏛️ Filter Wilayah Administrasi</span>
+            <span id="filter-count-badge" class="badge-count">Hierarkis</span>
           </div>
-          <div class="search-box-wrap">
-            <input
-              type="text"
-              id="search-input"
-              class="search-input"
-              placeholder="Ketik Dusun (mis: Kinahrejo), Kalurahan, Kapanewon..."
-              autocomplete="off"
-            />
-            <button type="button" id="btn-search-go" class="search-go-btn" title="Cari Lokasi / Geocoding Dusun">Cari</button>
-          </div>
-          <div id="search-status-hint" class="search-hint">
-            Mendukung pencarian Dusun/Padukuhan, Kalurahan, Kapanewon, Kabupaten, atau klik langsung di peta.
+          <div class="search-hint" style="margin-top:0;margin-bottom:8px;">
+            Pilih Kabupaten/Kota &rarr; Kapanewon &rarr; Kalurahan untuk zoom presisi ke batas administrasi desa.
           </div>
 
-          <div class="filter-row" style="margin-top:6px;margin-bottom:8px;">
-            <select id="filter-kabupaten" class="select-box">
-              <option value="ALL">Semua Kab./Kota (DIY)</option>
-              <option value="Kab. Sleman">Kab. Sleman</option>
-              <option value="Kab. Bantul">Kab. Bantul</option>
-              <option value="Kota Yogyakarta">Kota Yogyakarta</option>
-            </select>
-            <select id="filter-zona" class="select-box">
-              <option value="ALL">Semua Kelas Skoring (GPKG)</option>
-              <option value="Zona Hijau">Skor &lt; 2,20 — Zona Hijau (Risiko Rendah)</option>
-              <option value="Zona Kuning">Skor 2,20–3,40 — Zona Kuning (Risiko Sedang)</option>
-              <option value="Zona Merah">Skor &gt; 3,40 — Zona Merah (Risiko Tinggi)</option>
-            </select>
+          <div class="cascading-filter-group">
+            <div class="cascading-field">
+              <label class="input-label" for="select-kabupaten">1. Kabupaten / Kota</label>
+              <select id="select-kabupaten" class="select-box">
+                <option value="">-- Semua Kabupaten/Kota (DIY) --</option>
+              </select>
+            </div>
+
+            <div class="cascading-field">
+              <label class="input-label" for="select-kapanewon">2. Kapanewon / Kecamatan</label>
+              <select id="select-kapanewon" class="select-box" disabled>
+                <option value="">-- Pilih Kapanewon --</option>
+              </select>
+            </div>
+
+            <div class="cascading-field">
+              <label class="input-label" for="select-kalurahan">3. Kalurahan / Kelurahan</label>
+              <select id="select-kalurahan" class="select-box" disabled>
+                <option value="">-- Pilih Kalurahan (Auto Zoom) --</option>
+              </select>
+            </div>
+
+            <div class="cascading-field">
+              <label class="input-label" for="filter-zona">Filter Kategori Zona GPKG</label>
+              <select id="filter-zona" class="select-box">
+                <option value="ALL">Semua Kelas Skoring (GPKG)</option>
+                <option value="Zona Hijau">Skor &lt; 2,20 — Zona Hijau (Risiko Rendah)</option>
+                <option value="Zona Kuning">Skor 2,20–3,40 — Zona Kuning (Risiko Sedang)</option>
+                <option value="Zona Merah">Skor &gt; 3,40 — Zona Merah (Risiko Tinggi)</option>
+              </select>
+            </div>
           </div>
 
-          <div id="search-results" class="search-results"></div>
+          <!-- Ringkasan Kalurahan Terpilih -->
+          <div id="selected-admin-banner" class="selected-admin-banner" style="display:none;"></div>
+
+          <!-- Daftar Cepat Kalurahan Hasil Filter -->
+          <div style="margin-top:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span class="input-label" style="margin-bottom:0;">Daftar Wilayah Kalurahan</span>
+              <button type="button" id="btn-reset-admin-filter" class="text-xs font-semibold text-blue-700 hover:underline">Reset Filter</button>
+            </div>
+            <div id="admin-filter-list" class="search-results custom-thin-scrollbar"></div>
+          </div>
         </div>
 
-        <!-- PETA DASAR (BASEMAP SWITCHER) -->
+        <!-- 2. KONTROL LAYER SPASIAL & OPACITY (SIDEBAR KIRI) -->
+        <div class="section-card">
+          <div class="section-title">
+            <span>🗂️ Kontrol Layer Spasial</span>
+            <span class="badge-count">10% – 100%</span>
+          </div>
+          <div id="sidebar-layer-controls" class="sidebar-layer-list custom-thin-scrollbar">
+            <!-- Diisi otomatis dan disinkronkan dengan Floating Layer Controller -->
+          </div>
+        </div>
+
+        <!-- 3. PETA DASAR (BASEMAP SWITCHER) -->
         <div class="section-card">
           <div class="section-title">
             <span>🗺️ Peta Dasar (Basemap)</span>
@@ -119,14 +150,14 @@
 
           <div style="margin-top:10px;">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px;">
-              <span>Intensitas Warna Sorotan Wilayah</span>
+              <span>Transparansi Sorotan Kalurahan</span>
               <span id="opacity-val">55%</span>
             </div>
-            <input type="range" id="poly-opacity" min="20" max="90" value="55" style="width:100%;" />
+            <input type="range" id="poly-opacity" min="10" max="100" step="5" value="55" style="width:100%;" />
           </div>
         </div>
 
-        <!-- INSPEKSI KOORDINAT PRESISI (WGS84 & UTM 49S) -->
+        <!-- 4. INSPEKSI KOORDINAT PRESISI (WGS84 & UTM 49S) -->
         <div class="section-card">
           <div class="section-title">
             <span>📐 Inspeksi Titik Koordinat</span>
@@ -192,9 +223,9 @@
         <span>📐 <b>UTM 49S (EPSG:32749)</b>: <span id="coord-utm">X: 435.865,0 mE, Y: 9.146.908,0 mS</span></span>
       </div>
 
-      <!-- FLOATING KAVLING DRAWING TOOLBAR (MILESTONE FASE 2) -->
+      <!-- FLOATING KAVLING DRAWING TOOLBAR -->
       <div class="map-kavling-toolbar" id="map-kavling-toolbar">
-        <button type="button" class="kavling-tool-btn primary" id="btn-draw-kavling" title="Gambar poligon kavling di peta untuk memotong segmen zona (Hijau, Kuning, Merah) &amp; hitung sudut lereng (β°) serta beda tinggi (H)">
+        <button type="button" class="kavling-tool-btn primary" id="btn-draw-kavling" title="Gambar poligon kavling di peta untuk memotong segmen zona (Hijau, Kuning, Merah) &amp; hitung sudut lereng (β°)">
           <span>✏️ Gambar Poligon Kavling</span>
         </button>
         <button type="button" class="kavling-tool-btn demo" id="btn-demo-kavling" title="Uji sampel poligon kavling lintas 3 zona triase (Hijau, Kuning, Merah)">
@@ -205,59 +236,133 @@
         </button>
       </div>
 
-      <!-- CORNER LAYER SWITCHER (CLEAN FLOATING CONTROL) -->
+      <!-- FLOATING LAYER CONTROLLER (DENGAN CUSTOM THIN SCROLLBAR & OPACITY SLIDERS 10% - 100%) -->
       <div class="map-layer-switcher" id="map-layer-switcher">
-        <button type="button" class="layer-switcher-toggle" id="btn-toggle-layer-panel" title="Pilih Layer Peta Spasial">
-          <span>🗂️ Layer Spasial</span>
+        <button type="button" class="layer-switcher-toggle" id="btn-toggle-layer-panel" title="Pilih Layer Peta Spasial &amp; Atur Transparansi">
+          <span>🗂️ Layer Spasial &amp; Opacity</span>
           <span class="chevron" id="layer-switcher-chevron">▾</span>
         </button>
-        <div class="layer-switcher-body" id="layer-switcher-body" data-panel="layer-spasial">
-          <div class="layer-switcher-subtitle">Layer Tematik &amp; Referensi (Opsional)</div>
-          <label class="layer-switch-item flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
-            <input type="checkbox" id="chk-kerawanan-longsor" class="rounded text-emerald-600" />
-            <span>⚠️ Peta Skoring Kerawanan Longsor (GPKG)</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-lereng-poly" />
-            <span>⛰️ Kemiringan Lereng (DEMNAS)</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-geologi" />
-            <span>🪨 Litologi / Formasi Batuan</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-tanah" />
-            <span>🌱 Karakteristik Tanah (Pedologi)</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-hujan" data-legacy-id="chk-idw-hujan" />
-            <span>🌧️ Curah Hujan (Kontur IDW)</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-tutupan" />
-            <span>🏡 Tutupan Lahan (RBI 25K)</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-admin" />
-            <span>🗺️ Garis Batas Administratif</span>
-          </label>
+        <div class="layer-switcher-body custom-thin-scrollbar" id="layer-switcher-body" data-panel="layer-spasial">
+          <div class="layer-switcher-subtitle">Layer Tematik Geoteknik (Opacity 10%–100%)</div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-kerawanan-longsor" data-layer-key="kerawananLongsor" />
+              <span>⚠️ Peta Skoring Kerawanan Longsor (GPKG)</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-kerawananLongsor" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="kerawananLongsor" />
+              <b id="opacity-lbl-kerawananLongsor">65%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-lereng-poly" data-layer-key="lerengPoly" />
+              <span>⛰️ Kemiringan Lereng (DEMNAS)</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-lerengPoly" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="lerengPoly" />
+              <b id="opacity-lbl-lerengPoly">65%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-geologi" data-layer-key="geologi" />
+              <span>🪨 Litologi &amp; Formasi Geologi</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-geologi" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="geologi" />
+              <b id="opacity-lbl-geologi">60%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-tanah" data-layer-key="tanah" />
+              <span>🌱 Karakteristik Tanah (Pedologi)</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-tanah" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="tanah" />
+              <b id="opacity-lbl-tanah">60%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-hujan" data-layer-key="idwHujan" />
+              <span>🌧️ Curah Hujan Tahunan (Isohyet)</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-idwHujan" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="idwHujan" />
+              <b id="opacity-lbl-idwHujan">60%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-tutupan" data-layer-key="tutupan" />
+              <span>🏡 Tutupan Lahan (RBI 25K)</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-tutupan" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="tutupan" />
+              <b id="opacity-lbl-tutupan">60%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-admin" data-layer-key="admin" />
+              <span>🗺️ Garis Batas Administrasi Kalurahan</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-admin" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="75" data-opacity-key="admin" />
+              <b id="opacity-lbl-admin">75%</b>
+            </div>
+          </div>
+
           <div class="layer-switcher-divider"></div>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-titik-dev" />
-            <span>📍 Titik Uji Sampel Developer</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-area-dev" />
-            <span>⭕ Radius Jangkauan Uji (500m)</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-pos-hujan" />
-            <span>💧 Pos Pengamatan Hujan BBWS</span>
-          </label>
-          <label class="layer-switch-item">
-            <input type="checkbox" id="chk-demnas" />
-            <span>📐 Grid Tile DEMNAS UTM</span>
-          </label>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-titik-dev" data-layer-key="titikDev" />
+              <span>📍 Titik Uji Sampel Developer</span>
+            </label>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-area-dev" data-layer-key="areaDev" />
+              <span>⭕ Radius Jangkauan Uji (500m)</span>
+            </label>
+            <div class="layer-opacity-row" id="opacity-wrap-areaDev" style="display:none;">
+              <span>Opacity</span>
+              <input type="range" min="10" max="100" step="5" value="50" data-opacity-key="areaDev" />
+              <b id="opacity-lbl-areaDev">50%</b>
+            </div>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-pos-hujan" data-layer-key="posHujan" />
+              <span>💧 Pos Pengamatan Hujan BBWS</span>
+            </label>
+          </div>
+
+          <div class="floating-layer-item">
+            <label class="layer-switch-item">
+              <input type="checkbox" id="chk-demnas" data-layer-key="demnas" />
+              <span>📐 Grid Tile DEMNAS UTM</span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -265,21 +370,22 @@
       <div class="map-legend" id="map-legend"></div>
     </section>
 
-    <!-- RIGHT SIDEBAR: MODERN GLASSMORPHIC SIDEBAR & AI GEOTECHNICAL ADVISOR -->
+    <!-- RIGHT SIDEBAR (Lebar 380px): DETAIL GEOTEKNIK, AUDIT TRAIL & BREAKDOWN SKOR -->
     <aside class="sidebar-right glass-sidebar">
-      <div class="panel-scroll" id="inspector-panel">
-        <!-- Diisi dinamis saat titik/dusun diklik atau dicari -->
+      <div class="panel-scroll custom-thin-scrollbar" id="inspector-panel">
+        <!-- Diisi dinamis saat titik/kalurahan diklik atau poligon kavling digambar -->
       </div>
     </aside>
 
   </main>
 
-  <!-- Leaflet + Leaflet-Geoman + Proj4js + Proj4Leaflet -->
+  <!-- Leaflet + Leaflet-Geoman + Proj4js + Proj4Leaflet + Turf.js -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
-  <!-- Pre-bundled EPSG:32749 GeoJSON Data -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+  <!-- Pre-bundled GeoJSON Data -->
   <script src="geojson_bundle.js"></script>
   <!-- Main Application Script -->
   <script src="app.js"></script>

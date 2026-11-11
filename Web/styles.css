@@ -229,11 +229,11 @@ body {
   color: #ffffff;
 }
 
-/* MAIN WORKSPACE */
+/* MAIN WORKSPACE (Sidebar Kiri 320px | Peta Tengah 1fr | Sidebar Kanan 380px) */
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: 315px 1fr 415px;
+  grid-template-columns: 320px 1fr 380px;
   min-height: 0;
   position: relative;
   background: var(--bg-app);
@@ -1410,3 +1410,221 @@ body {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25) !important;
 }
 
+
+/* =====================================================================
+   MODUL 3 & 4: HIERARCHICAL ADMIN FILTER, OPACITY SLIDERS & AUDIT TRAIL
+   ===================================================================== */
+.custom-thin-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.custom-thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.cascading-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cascading-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.select-box:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.selected-admin-banner {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  font-size: 11px;
+  color: #1e3a8a;
+  line-height: 1.4;
+}
+
+.floating-layer-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 4px;
+  border-radius: 7px;
+  transition: background 0.15s ease;
+}
+
+.floating-layer-item:hover {
+  background: #f8fafc;
+}
+
+.layer-opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 4px 22px;
+  font-size: 10px;
+  color: #475569;
+}
+
+.layer-opacity-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  accent-color: var(--primary-blue);
+  cursor: pointer;
+}
+
+.layer-opacity-row b {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  min-width: 28px;
+  text-align: right;
+  color: #0f172a;
+}
+
+.sidebar-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.sidebar-layer-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  transition: all 0.15s ease;
+}
+
+.sidebar-layer-card.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.audit-trail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.audit-cell {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.audit-cell.span-2 {
+  grid-column: span 2;
+}
+
+.audit-lbl {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  display: block;
+}
+
+.audit-val {
+  font-size: 12.5px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: #0f172a;
+  margin-top: 2px;
+  display: block;
+}
+
+.audit-sub {
+  font-size: 10px;
+  color: #475569;
+  margin-top: 1px;
+  display: block;
+}
+
+.score-breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.score-progress-row {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.score-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.score-progress-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.score-progress-badge {
+  font-size: 10px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.score-progress-track {
+  height: 7px;
+  width: 100%;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.score-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.score-progress-desc {
+  font-size: 10.5px;
+  color: #475569;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.map-layer-switcher {
+  width: 268px;
+}
+
+.layer-switcher-body {
+  max-height: 360px;
+  overflow-y: auto;
+}
