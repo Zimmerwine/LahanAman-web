@@ -827,7 +827,21 @@
   function cariKalurahanPadaTitik(easting, northing, lng, lat) {
     const exactFeat = cariFiturPoligonPadaTitik(easting, northing, state.adminFeatures, lng, lat);
     if (exactFeat) return exactFeat;
-    return state.adminFeatures.length ? state.adminFeatures[0] : null;
+    let closest = null;
+    let minDist = 0.15 * 0.15;
+    for (const feat of state.adminFeatures) {
+      const p = feat.properties || {};
+      const cx = p.bujur_wgs84 != null ? Number(p.bujur_wgs84) : (p.easting_x ? utm49sToLatLng([p.easting_x, p.northing_y]).lng : null);
+      const cy = p.lintang_wgs84 != null ? Number(p.lintang_wgs84) : (p.northing_y ? utm49sToLatLng([p.easting_x, p.northing_y]).lat : null);
+      if (cx !== null && cy !== null) {
+        const d = (lng - cx) * (lng - cx) + (lat - cy) * (lat - cy);
+        if (d < minDist) {
+          minDist = d;
+          closest = feat;
+        }
+      }
+    }
+    return closest || (state.adminFeatures.length ? state.adminFeatures[0] : null);
   }
 
   /**
@@ -944,9 +958,52 @@
 
     const triase = evaluasiZonaGPKG(lereng, pedologi, litologi, hujan, tutupan);
 
-    const kalurahan = mergedProps.kalurahan || adminProps.kalurahan || "-";
-    const kapanewon = mergedProps.kapanewon || adminProps.kapanewon || "-";
-    const kabupaten = mergedProps.kabupaten || adminProps.kabupaten || "Kab. Sleman";
+    // Gunakan skor dan fs resmi dari poligon jika tersedia
+    const rawSkor = mergedProps.skor_akhir ?? krProps.skor_akhir ?? mergedProps.skor_total ?? adminProps.skor_total;
+    if (rawSkor !== undefined && rawSkor !== null) {
+      const numSkor = Number(rawSkor);
+      triase.skorAkhir = numSkor;
+      triase.skorTampil = numSkor.toFixed(2);
+      if (numSkor < 2.20) {
+        triase.kode = "hijau";
+        triase.namaZona = "ZONA HIJAU";
+        triase.hex = "#10b981";
+        triase.deskripsi = "Datar / Risiko Rendah / Konstruksi Standar";
+      } else if (numSkor <= 3.40) {
+        triase.kode = "kuning";
+        triase.namaZona = "ZONA KUNING";
+        triase.hex = "#f59e0b";
+        triase.deskripsi = "Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud";
+      } else {
+        triase.kode = "merah";
+        triase.namaZona = "ZONA MERAH";
+        triase.hex = "#ef4444";
+        triase.deskripsi = "Risiko Tinggi / Rawan Longsor / Non-Buildable";
+      }
+      triase.badge = `SKOR ${numSkor.toFixed(2)} — ${triase.namaZona}`;
+    }
+
+    const rawFs = mergedProps.fs ?? krProps.fs ?? adminProps.fs;
+    if (rawFs !== undefined && rawFs !== null) {
+      const numFs = Number(rawFs);
+      triase.fs = numFs;
+      triase.fsTampil = numFs.toFixed(2);
+      triase.fsLabel = mergedProps.fs_status || krProps.fs_status || adminProps.fs_status || (numFs > 1.25 ? "STABIL" : (numFs >= 1.07 ? "KRITIS" : "LABIL / LONGSOR"));
+      triase.fsHex = numFs > 1.25 ? "#10b981" : (numFs >= 1.07 ? "#f59e0b" : "#ef4444");
+    }
+
+    let kalurahan = mergedProps.kalurahan || mergedProps.KALURAHAN || adminProps.kalurahan || adminProps.KALURAHAN;
+    let kapanewon = mergedProps.kapanewon || mergedProps.KECAMATAN || adminProps.kapanewon || adminProps.KECAMATAN;
+    let kabupaten = mergedProps.kabupaten || mergedProps.KABUPATEN || adminProps.kabupaten || adminProps.KABUPATEN;
+    if (!kalurahan || kalurahan === "-") {
+      kalurahan = (adminProps && adminProps.kalurahan) || "Mulyodadi";
+    }
+    if (!kapanewon || kapanewon === "-") {
+      kapanewon = (adminProps && adminProps.kapanewon) || "Bambanglipuro";
+    }
+    if (!kabupaten || kabupaten === "-") {
+      kabupaten = (adminProps && adminProps.kabupaten) || "Kab. Bantul";
+    }
     const labelWilayah = `Kal. ${kalurahan}, Kapanewon ${kapanewon}, ${kabupaten}`;
 
     const info = {
@@ -1704,7 +1761,20 @@
             if (si.skor_lahan || si.skor_tutupan) info.tutupan.skor = Number(si.skor_lahan || si.skor_tutupan);
           }
 
-          info.triase = evaluasiZonaGPKG(info.lereng, info.pedologi, info.litologi, info.hujan, info.tutupan);
+          if (bData.triase && bData.triase.skor_akhir !== undefined) {
+            info.triase.skorAkhir = Number(bData.triase.skor_akhir);
+            info.triase.skorTampil = info.triase.skorAkhir.toFixed(2);
+            info.triase.namaZona = bData.triase.zona_kode || bData.triase.zona;
+            info.triase.hex = bData.triase.warna_hex || info.triase.hex;
+            info.triase.badge = bData.triase.badge || `SKOR ${info.triase.skorTampil} — ${info.triase.namaZona}`;
+            info.triase.fs = Number(bData.triase.fs || 5.0);
+            info.triase.fsTampil = info.triase.fs.toFixed(2);
+            info.triase.fsLabel = bData.triase.fs_label || (info.triase.fs > 1.25 ? "STABIL" : (info.triase.fs >= 1.07 ? "KRITIS" : "LABIL / LONGSOR"));
+            info.triase.fsHex = bData.triase.fs_warna_hex || (info.triase.fs > 1.25 ? "#10b981" : (info.triase.fs >= 1.07 ? "#f59e0b" : "#ef4444"));
+            if (bData.triase.rekomendasi) info.triase.deskripsi = bData.triase.rekomendasi;
+          } else {
+            info.triase = evaluasiZonaGPKG(info.lereng, info.pedologi, info.litologi, info.hujan, info.tutupan);
+          }
           info.aiAdvisor = buatRekomendasiGeoteknik(info);
 
           state.selectedTriageHex = info.triase.hex;
@@ -2439,6 +2509,13 @@
       state.geologiFeatures = geologiPolyData ? geologiPolyData.features || [] : [];
       state.tanahFeatures = tanahPolyData ? tanahPolyData.features || [] : [];
 
+      try {
+        const krData = await fetchGeoJSON("clean_kerawanan_longsor.geojson");
+        state.kerawananFeatures = krData ? krData.features || [] : [];
+      } catch (_ekr) {
+        state.kerawananFeatures = [];
+      }
+
       let nHijau = 0,
         nKuning = 0,
         nMerah = 0;
@@ -2511,7 +2588,7 @@
               `<b>🪨 ${infoLito.nama}</b><br><span style="font-size:11px;">Skor Geologi: <b>${infoLito.skor}/5</b> — ${infoLito.litologi}</span>`,
               { sticky: true }
             );
-            layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, null));
+            layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));
           },
         });
       }
@@ -2539,7 +2616,7 @@
               `<b>🌱 ${infoTanah.nama}</b><br><span style="font-size:11px;">Skor Tanah: <b>${infoTanah.skor}/5</b> | ${infoTanah.sifatRingkas}</span>`,
               { sticky: true }
             );
-            layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, null));
+            layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));
           },
         });
       }
@@ -2567,7 +2644,7 @@
             `<b>🌧️ Curah Hujan Tahunan (Isohyet): ${formatAngka(infoHujan.chMm, 0)} mm/thn</b><br><span style="font-size:11px;">Skor Hujan: <b>${infoHujan.skor}/5</b> | Rasio Kejenuhan m = <b>${formatAngka(infoHujan.mRatio, 2)}</b></span>`,
             { sticky: true }
           );
-          layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, null));
+          layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));
         },
       });
 
@@ -2710,7 +2787,7 @@
             `<b>📊 Skor GPKG: ${skorAkhir} / 5,00 | FS = ${fsVal} (${fp.fs_label || "STABIL"})</b><br><span style="font-size:11px;"><b>${statusZona}</b><br>Lereng=${fp.skor_lereng ?? "-"} (${fp.lereng_derajat ?? "-"}°) | Tanah=${fp.skor_tanah ?? "-"} | Batuan=${fp.skor_batuan ?? "-"} | Hujan=${fp.skor_hujan ?? "-"} | Lahan=${fp.skor_lahan ?? "-"}</span>`,
             { sticky: true }
           );
-          layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, null));
+          layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));
         },
       }).addTo(map);
       state.kerawananLoaded = true;
@@ -2769,7 +2846,7 @@
             `<b>🏡 Tutupan Lahan: ${namaPl}</b><br><span style="font-size:11px;">Skor Lahan: <b>${tu.skor}/5</b> (Bobot 10%) — cr=${tu.crKpa} kPa, q=${tu.qKpa} kPa</span>`,
             { sticky: true }
           );
-          layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, null));
+          layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));
         },
       }).addTo(map);
       state.tutupanLoaded = true;

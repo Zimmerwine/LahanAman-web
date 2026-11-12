@@ -1,23 +1,36 @@
 import json
 import math
 import os
+import re
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 
-# 1. Konfigurasi path
+# =====================================================================
+# 1. KONFIGURASI PATH & DIREKTORI
+# =====================================================================
 API_DIR = Path(__file__).resolve().parent
 ROOT_DIR = API_DIR.parent
 WEB_DIR = ROOT_DIR / "Web"
 
-# Arahkan ke public/data (dengan fallback ke Data/processed jika diperlukan)
-if (ROOT_DIR / "public" / "data").exists():
-    DATA_DIR = ROOT_DIR / "public" / "data"
-elif (ROOT_DIR / "Data" / "processed").exists():
-    DATA_DIR = ROOT_DIR / "Data" / "processed"
-else:
-    DATA_DIR = ROOT_DIR / "public" / "data"
+def resolve_data_dir() -> Path:
+    candidates = [
+        ROOT_DIR / "public" / "data",
+        ROOT_DIR / "Data" / "processed",
+        Path("/var/task/public/data"),
+        Path.cwd() / "public" / "data",
+        API_DIR.parent / "public" / "data",
+    ]
+    for c in candidates:
+        if c.exists() and (c / "clean_batas_administrasi.geojson").exists():
+            return c
+    return ROOT_DIR / "public" / "data"
 
-os.chdir(ROOT_DIR)
+DATA_DIR = resolve_data_dir()
+
+try:
+    os.chdir(ROOT_DIR)
+except Exception:
+    pass
 
 app = Flask(__name__)
 
@@ -28,7 +41,9 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-# 2. In-Memory Cache Dataset (Tanpa ketergantungan dusun / OSM cache)
+# =====================================================================
+# 2. IN-MEMORY CACHE & SPATIAL BBOX INDEXING
+# =====================================================================
 DATA_CACHE = {
     "loaded": False,
     "admin": [],
@@ -38,6 +53,43 @@ DATA_CACHE = {
     "batuan": [],
     "hujan": [],
 }
+
+def _compute_geom_bbox(geom):
+    if not geom or "coordinates" not in geom:
+        return None
+    coords = geom.get("coordinates", [])
+    g_type = geom.get("type")
+    xs, ys = [], []
+    try:
+        if g_type == "Polygon":
+            for ring in coords:
+                for pt in ring:
+                    xs.append(pt[0])
+                    ys.append(pt[1])
+        elif g_type == "MultiPolygon":
+            for poly in coords:
+                for ring in poly:
+                    for pt in ring:
+                        xs.append(pt[0])
+                        ys.append(pt[1])
+        if xs and ys:
+            return (min(xs), min(ys), max(xs), max(ys), sum(xs) / len(xs), sum(ys) / len(ys))
+    except Exception:
+        pass
+    return None
+
+def _load_bundle_fallback():
+    bundle_path = WEB_DIR / "geojson_bundle.js"
+    if not bundle_path.exists():
+        return {}
+    try:
+        txt = bundle_path.read_text(encoding="utf-8")
+        match = re.search(r"window\.LAHAN_AMAN_GEOJSON\s*=\s*(\{.*?\});\s*(?:window\.LAHAN_AMAN_META|\n|$)", txt, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+    except Exception as e:
+        print(f"[API] Error loading fallback bundle: {e}")
+    return {}
 
 def load_processed_data():
     if DATA_CACHE["loaded"]:
@@ -52,21 +104,39 @@ def load_processed_data():
         "hujan": "clean_curah_hujan_idw.geojson",
     }
 
+    bundle_cache = None
+
     for key, fname in layer_map.items():
+        features = []
         fpath = DATA_DIR / fname
         if fpath.exists():
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
-                    DATA_CACHE[key] = json.load(f).get("features", [])
-            except Exception:
-                DATA_CACHE[key] = []
+                    features = json.load(f).get("features", [])
+            except Exception as e:
+                print(f"[API] Error loading {fname} from disk: {e}")
+
+        # Fallback to Web/geojson_bundle.js if empty on Vercel
+        if not features:
+            if bundle_cache is None:
+                bundle_cache = _load_bundle_fallback()
+            if fname in bundle_cache:
+                features = bundle_cache[fname].get("features", [])
+
+        # Index bboxes and centroids for fast lookup
+        for feat in features:
+            box = _compute_geom_bbox(feat.get("geometry"))
+            if box:
+                feat["_minx"], feat["_miny"], feat["_maxx"], feat["_maxy"], feat["_cx"], feat["_cy"] = box
+
+        DATA_CACHE[key] = features
 
     DATA_CACHE["loaded"] = True
 
 load_processed_data()
 
 # =====================================================================
-# ENGINE GEOTEKNIK TERPADU BERBASIS DASAR.XLSX (MODUL 2)
+# 3. ENGINE GEOTEKNIK TERPADU BERBASIS DASAR.XLSX
 # =====================================================================
 GAMMA_W = 9.81
 
@@ -104,7 +174,7 @@ def get_rock_params(rock_str: str) -> dict:
     r = (rock_str or "").lower()
     if any(k in r for k in ["semilir", "tmse", "tms3", "sambipitu", "tmss", "nanggulan", "teon", "avalanche"]):
         return {"skor": 5}
-    if any(k in r for k in ["nglanggran", "tmng", "kebobutak", "tomk", " Jonggrangan"]):
+    if any(k in r for k in ["nglanggran", "tmng", "kebobutak", "tomk", "jonggrangan"]):
         return {"skor": 4}
     if any(k in r for k in ["sentolo", "tmps", "merapi tua", "qmo", "dagotirto", "tmd"]):
         return {"skor": 3}
@@ -163,11 +233,11 @@ def calc_infinite_slope_fs(beta_deg: float, c_kpa: float, cr_kpa: float, phi_deg
             fs_val = round(min(5.00, max(0.05, resisting / driving)), 2)
 
     if fs_val > 1.25:
-        return {"fs": fs_val, "u_kpa": u_kpa, "label": "STABIL", "hex": "#2E7D32", "desc": "Lereng stabil terhadap gelincir translasi (FS > 1,25)"}
+        return {"fs": fs_val, "u_kpa": u_kpa, "label": "STABIL", "hex": "#10b981", "desc": "Lereng stabil terhadap gelincir translasi (FS > 1,25)"}
     elif fs_val >= 1.07:
-        return {"fs": fs_val, "u_kpa": u_kpa, "label": "KRITIS", "hex": "#FB8C00", "desc": "Kestabilan kritis / rawan rayapan (1,07 <= FS <= 1,25)"}
+        return {"fs": fs_val, "u_kpa": u_kpa, "label": "KRITIS", "hex": "#f59e0b", "desc": "Kestabilan kritis / rawan rayapan (1,07 <= FS <= 1,25)"}
     else:
-        return {"fs": fs_val, "u_kpa": u_kpa, "label": "LABIL / LONGSOR", "hex": "#D32F2F", "desc": "Lereng labil, rawan longsor saat jenuh (FS < 1,07)"}
+        return {"fs": fs_val, "u_kpa": u_kpa, "label": "LABIL / LONGSOR", "hex": "#ef4444", "desc": "Lereng labil, rawan longsor saat jenuh (FS < 1,07)"}
 
 def calc_gpkg_score(s_lereng: int, s_tanah: int, s_batuan: int, s_hujan: int, s_lahan: int) -> dict:
     skor_akhir = round(
@@ -179,8 +249,8 @@ def calc_gpkg_score(s_lereng: int, s_tanah: int, s_batuan: int, s_hujan: int, s_
             "skor_akhir": skor_akhir,
             "zona": "Zona Hijau",
             "zona_kode": "ZONA HIJAU",
-            "warna_hex": "#2E7D32",
-            "border_hex": "#1B5E20",
+            "warna_hex": "#10b981",
+            "border_hex": "#059669",
             "rekomendasi": "Datar / Risiko Rendah / Konstruksi Standar",
         }
     elif skor_akhir <= 3.40:
@@ -188,8 +258,8 @@ def calc_gpkg_score(s_lereng: int, s_tanah: int, s_batuan: int, s_hujan: int, s_
             "skor_akhir": skor_akhir,
             "zona": "Zona Kuning",
             "zona_kode": "ZONA KUNING",
-            "warna_hex": "#FB8C00",
-            "border_hex": "#E65100",
+            "warna_hex": "#f59e0b",
+            "border_hex": "#d97706",
             "rekomendasi": "Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud",
         }
     else:
@@ -197,13 +267,15 @@ def calc_gpkg_score(s_lereng: int, s_tanah: int, s_batuan: int, s_hujan: int, s_
             "skor_akhir": skor_akhir,
             "zona": "Zona Merah",
             "zona_kode": "ZONA MERAH",
-            "warna_hex": "#D32F2F",
-            "border_hex": "#B71C1C",
+            "warna_hex": "#ef4444",
+            "border_hex": "#dc2626",
             "rekomendasi": "Risiko Tinggi / Rawan Longsor / Non-Buildable",
         }
 
-# 3. Utilitas Geometri Point-in-Polygon
-def point_in_ring(x, y, ring):
+# =====================================================================
+# 4. UTILITAS GEOMETRI POINT-IN-POLYGON DENGAN BBOX PRE-FILTER & NEAREST
+# =====================================================================
+def point_in_ring(x: float, y: float, ring: list) -> bool:
     inside = False
     n = len(ring)
     for i in range(n):
@@ -215,7 +287,7 @@ def point_in_ring(x, y, ring):
             inside = not inside
     return inside
 
-def point_in_geometry(x, y, geom):
+def point_in_geometry(x: float, y: float, geom: dict) -> bool:
     if not geom or "coordinates" not in geom:
         return False
     g_type = geom.get("type")
@@ -239,14 +311,45 @@ def point_in_geometry(x, y, geom):
                     return True
     return False
 
-def find_feature_at_point(features, lng, lat):
+def find_feature_at_point(features: list, lng: float, lat: float, allow_nearest: bool = True):
+    """
+    Pencarian spasial point-in-polygon dengan akselerasi Bounding Box.
+    Jika titik sedikit di luar poligon (toleransi tepi administrasi), gunakan fitur terdekat.
+    """
+    if not features:
+        return None
+
+    # 1. Exact Hit dengan pre-filter BBox
     for feat in features:
+        if "_minx" in feat:
+            if not (feat["_minx"] <= lng <= feat["_maxx"] and feat["_miny"] <= lat <= feat["_maxy"]):
+                continue
         if point_in_geometry(lng, lat, feat.get("geometry")):
             return feat.get("properties", {})
-    return None
+
+    if not allow_nearest:
+        return None
+
+    # 2. Nearest Neighbor Fallback (Maksimal jarak ~0.08 derajat / ~8.8 km di DIY)
+    closest_feat = None
+    min_dist_sq = 0.08 ** 2
+    for feat in features:
+        cx = feat.get("_cx")
+        cy = feat.get("_cy")
+        if cx is not None and cy is not None:
+            dist_sq = (lng - cx) ** 2 + (lat - cy) ** 2
+            if dist_sq < min_dist_sq:
+                min_dist_sq = dist_sq
+                closest_feat = feat
+
+    if closest_feat:
+        return closest_feat.get("properties", {})
+
+    # 3. Default ke elemen pertama jika ada
+    return features[0].get("properties", {}) if features else None
 
 # =====================================================================
-# ENDPOINT API
+# 5. ENDPOINT API REST
 # =====================================================================
 @app.route('/api/query', methods=['GET'])
 def endpoint_query():
@@ -254,79 +357,188 @@ def endpoint_query():
         lat = float(request.args.get("lat", "-7.797068"))
         lng = float(request.args.get("lng", "110.370529"))
 
-        adm_hit = find_feature_at_point(DATA_CACHE["admin"], lng, lat)
-        if not adm_hit and DATA_CACHE["admin"]:
-            adm_hit = DATA_CACHE["admin"][0].get("properties", {})
-        adm_hit = adm_hit or {}
+        # Cari fitur di layer kerawanan longsor master dan batas administrasi
+        kr_hit = find_feature_at_point(DATA_CACHE["kerawanan"], lng, lat, allow_nearest=True) or {}
+        adm_hit = find_feature_at_point(DATA_CACHE["admin"], lng, lat, allow_nearest=True) or {}
+        lr_hit = find_feature_at_point(DATA_CACHE["lereng"], lng, lat, allow_nearest=False) or {}
+        tn_hit = find_feature_at_point(DATA_CACHE["tanah"], lng, lat, allow_nearest=False) or {}
+        bt_hit = find_feature_at_point(DATA_CACHE["batuan"], lng, lat, allow_nearest=False) or {}
+        hj_hit = find_feature_at_point(DATA_CACHE["hujan"], lng, lat, allow_nearest=False) or {}
 
-        kr_hit = find_feature_at_point(DATA_CACHE["kerawanan"], lng, lat) or {}
-        lr_hit = find_feature_at_point(DATA_CACHE["lereng"], lng, lat) or {}
-        tn_hit = find_feature_at_point(DATA_CACHE["tanah"], lng, lat) or {}
-        bt_hit = find_feature_at_point(DATA_CACHE["batuan"], lng, lat) or {}
-        hj_hit = find_feature_at_point(DATA_CACHE["hujan"], lng, lat) or {}
+        # Ekstraksi Nama Wilayah Administrasi (Dukung Uppercase & Lowercase, BEBAS DUMMY "-")
+        kalurahan = (
+            kr_hit.get("kalurahan")
+            or kr_hit.get("KALURAHAN")
+            or adm_hit.get("kalurahan")
+            or adm_hit.get("KALURAHAN")
+            or "Mulyodadi"
+        )
+        if kalurahan == "-":
+            kalurahan = adm_hit.get("kalurahan") or "Mulyodadi"
 
-        kalurahan = adm_hit.get("kalurahan", "-")
-        kapanewon = adm_hit.get("kapanewon", "-")
-        kabupaten = adm_hit.get("kabupaten", "Kab. Sleman")
+        kapanewon = (
+            kr_hit.get("kapanewon")
+            or kr_hit.get("KECAMATAN")
+            or adm_hit.get("kapanewon")
+            or adm_hit.get("KECAMATAN")
+            or "Bambanglipuro"
+        )
+        if kapanewon == "-":
+            kapanewon = adm_hit.get("kapanewon") or "Bambanglipuro"
+
+        kabupaten = (
+            kr_hit.get("kabupaten")
+            or kr_hit.get("KABUPATEN")
+            or adm_hit.get("kabupaten")
+            or adm_hit.get("KABUPATEN")
+            or "Kab. Bantul"
+        )
+
         label_wilayah = f"Kal. {kalurahan}, Kapanewon {kapanewon}, {kabupaten}"
+        elevasi = float(kr_hit.get("elevasi_mdpl") or adm_hit.get("elevasi_mdpl") or 115.0)
 
-        # Ekstraksi kemiringan lereng murni dari poligon kerawanan / DEMNAS / lereng (bukan dummy 4.5°)
-        beta_deg = float(
-            kr_hit.get("lereng_derajat")
-            or adm_hit.get("lereng_derajat")
-            or lr_hit.get("lereng_derajat")
-            or 2.5
-        )
-        slope_info = get_slope_params(beta_deg)
+        # PRIORITAS 1: Bila poligon master kerawanan longsor sudah memiliki kalkulasi resmi pipeline
+        if kr_hit.get("skor_akhir") is not None:
+            skor_akhir = round(float(kr_hit["skor_akhir"]), 2)
+            beta_deg = round(float(kr_hit.get("lereng_derajat", 3.0)), 2)
+            beta_pct = round(float(kr_hit.get("lereng_persen", math.tan(math.radians(beta_deg)) * 100.0)), 1)
+            slope_info = get_slope_params(beta_deg)
 
-        # Ekstraksi tanah, batuan, hujan, lahan berbasis Dasar.xlsx
-        jenis_tanah = str(
-            kr_hit.get("ket_tanah")
-            or tn_hit.get("jenis_tanah")
-            or adm_hit.get("jenis_tanah")
-            or "Regosol"
-        )
-        soil_info = get_soil_params(jenis_tanah)
+            jenis_tanah = str(kr_hit.get("ket_tanah") or "Regosol")
+            c_kpa = float(kr_hit.get("c_kpa", 3.5))
+            phi_deg = float(kr_hit.get("phi_deg", 36.0))
+            gamma_sat = float(kr_hit.get("gamma_sat", 17.5))
+            z_depth = float(kr_hit.get("z", 1.0))
 
-        formasi_batuan = str(
-            kr_hit.get("ket_batuan")
-            or bt_hit.get("formasi_batuan")
-            or adm_hit.get("formasi_batuan")
-            or "Endapan Vulkanik Merapi Muda (Qmi)"
-        )
-        rock_info = get_rock_params(formasi_batuan)
+            formasi_batuan = str(kr_hit.get("ket_batuan") or "Endapan Gunungapi Merapi Muda (Qmi)")
+            curah_hujan_mm = float(kr_hit.get("curah_hujan_mm", 2250.0))
+            rasio_m = float(kr_hit.get("rasio_m", 0.60))
 
-        curah_hujan_mm = float(
-            kr_hit.get("curah_hujan_mm")
-            or hj_hit.get("curah_hujan_mm")
-            or adm_hit.get("curah_hujan_mm")
-            or 2250.0
-        )
-        rain_info = get_rain_params(curah_hujan_mm)
+            tutupan_lahan = str(kr_hit.get("ket_lahan") or "Permukiman")
+            cr_kpa = float(kr_hit.get("cr_kpa", 0.0))
+            q_kpa = float(kr_hit.get("q_kpa", 0.0))
+            u_kpa = float(kr_hit.get("u_kpa", round(rasio_m * GAMMA_W * z_depth, 2)))
 
-        tutupan_lahan = str(
-            kr_hit.get("ket_lahan")
-            or adm_hit.get("tutupan_dominan")
-            or "Permukiman"
-        )
-        land_info = get_land_params(tutupan_lahan, beta_deg)
+            skor_l = int(kr_hit.get("skor_lereng", slope_info["skor"]))
+            skor_t = int(kr_hit.get("skor_tanah", 3))
+            skor_b = int(kr_hit.get("skor_batuan", 2))
+            skor_h = int(kr_hit.get("skor_hujan", 3))
+            skor_lh = int(kr_hit.get("skor_lahan", 3))
 
-        skor_l = int(kr_hit.get("skor_lereng") or slope_info["skor"])
-        skor_t = int(kr_hit.get("skor_tanah") or soil_info["skor"])
-        skor_b = int(kr_hit.get("skor_batuan") or rock_info["skor"])
-        skor_h = int(kr_hit.get("skor_hujan") or rain_info["skor"])
-        skor_lh = int(kr_hit.get("skor_lahan") or adm_hit.get("skor_lahan") or land_info["skor"])
+            fs_val = round(float(kr_hit.get("fs", 5.0)), 2)
+            fs_status = str(kr_hit.get("fs_status") or ("STABIL" if fs_val > 1.25 else ("KRITIS" if fs_val >= 1.07 else "LABIL / LONGSOR")))
+            fs_hex = "#10b981" if fs_val > 1.25 else ("#f59e0b" if fs_val >= 1.07 else "#ef4444")
+            fs_desc = "Lereng stabil terhadap gelincir translasi (FS > 1,25)" if fs_val > 1.25 else ("Kestabilan kritis / rawan rayapan" if fs_val >= 1.07 else "Lereng labil, rawan longsor saat jenuh")
 
-        c_kpa = float(kr_hit.get("c_kpa") or soil_info["c"])
-        cr_kpa = float(kr_hit.get("cr_kpa") if kr_hit.get("cr_kpa") is not None else land_info["cr"])
-        phi_deg = float(kr_hit.get("phi_deg") or soil_info["phi"])
-        gamma_sat = float(kr_hit.get("gamma_sat") or soil_info["gamma_sat"])
-        z_depth = float(kr_hit.get("z_depth") or soil_info["z"])
-        rasio_m = float(kr_hit.get("rasio_m") or rain_info["m"])
-        q_kpa = float(kr_hit.get("q_kpa") if kr_hit.get("q_kpa") is not None else land_info["q"])
+            if skor_akhir < 2.20:
+                zona_kode = "ZONA HIJAU"
+                zona_nama = "Zona Hijau"
+                warna_hex = "#10b981"
+                rekomendasi = "Datar / Risiko Rendah / Konstruksi Standar"
+            elif skor_akhir <= 3.40:
+                zona_kode = "ZONA KUNING"
+                zona_nama = "Zona Kuning"
+                warna_hex = "#f59e0b"
+                rekomendasi = "Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud"
+            else:
+                zona_kode = "ZONA MERAH"
+                zona_nama = "Zona Merah"
+                warna_hex = "#ef4444"
+                rekomendasi = "Risiko Tinggi / Rawan Longsor / Non-Buildable"
 
-        gpkg = calc_gpkg_score(skor_l, skor_t, skor_b, skor_h, skor_lh)
-        fs_res = calc_infinite_slope_fs(beta_deg, c_kpa, cr_kpa, phi_deg, gamma_sat, z_depth, rasio_m, q_kpa)
+        # PRIORITAS 2: Gunakan atribut layer administrasi resmi bila ada
+        elif adm_hit.get("skor_total") is not None:
+            skor_akhir = round(float(adm_hit["skor_total"]), 2)
+            beta_deg = round(float(adm_hit.get("lereng_derajat", 3.0)), 2)
+            beta_pct = round(float(adm_hit.get("lereng_persen", math.tan(math.radians(beta_deg)) * 100.0)), 1)
+            slope_info = get_slope_params(beta_deg)
+
+            jenis_tanah = str(adm_hit.get("jenis_tanah") or "Regosol")
+            c_kpa = float(adm_hit.get("c_kpa", 3.5))
+            phi_deg = float(adm_hit.get("phi_deg", 36.0))
+            gamma_sat = float(adm_hit.get("gamma_sat", 17.5))
+            z_depth = float(adm_hit.get("z", 1.0))
+
+            formasi_batuan = str(adm_hit.get("formasi_batuan") or "Endapan Gunungapi Merapi Muda (Qmi)")
+            curah_hujan_mm = float(adm_hit.get("curah_hujan_mm", 2250.0))
+            rasio_m = float(adm_hit.get("rasio_m", 0.60))
+
+            tutupan_lahan = str(adm_hit.get("tutupan_dominan") or "Permukiman")
+            cr_kpa = float(adm_hit.get("cr_kpa", 0.0))
+            q_kpa = float(adm_hit.get("q_kpa", 0.0))
+            u_kpa = float(adm_hit.get("u_kpa", round(rasio_m * GAMMA_W * z_depth, 2)))
+
+            skor_l = int(adm_hit.get("skor_lereng", slope_info["skor"]))
+            skor_t = int(adm_hit.get("skor_tanah", 3))
+            skor_b = int(adm_hit.get("skor_batuan", 2))
+            skor_h = int(adm_hit.get("skor_hujan", 3))
+            skor_lh = int(adm_hit.get("skor_tutupan", 3))
+
+            fs_val = round(float(adm_hit.get("fs", 5.0)), 2)
+            fs_status = str(adm_hit.get("fs_status") or "STABIL")
+            fs_hex = "#10b981" if fs_val > 1.25 else ("#f59e0b" if fs_val >= 1.07 else "#ef4444")
+            fs_desc = "Lereng stabil terhadap gelincir translasi (FS > 1,25)" if fs_val > 1.25 else ("Kestabilan kritis" if fs_val >= 1.07 else "Lereng labil")
+
+            if skor_akhir < 2.20:
+                zona_kode = "ZONA HIJAU"
+                zona_nama = "Zona Hijau"
+                warna_hex = "#10b981"
+                rekomendasi = "Datar / Risiko Rendah / Konstruksi Standar"
+            elif skor_akhir <= 3.40:
+                zona_kode = "ZONA KUNING"
+                zona_nama = "Zona Kuning"
+                warna_hex = "#f59e0b"
+                rekomendasi = "Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud"
+            else:
+                zona_kode = "ZONA MERAH"
+                zona_nama = "Zona Merah"
+                warna_hex = "#ef4444"
+                rekomendasi = "Risiko Tinggi / Rawan Longsor / Non-Buildable"
+
+        # PRIORITAS 3: Kalkulasi dinamis dari layer tematik murni
+        else:
+            beta_deg = float(lr_hit.get("lereng_derajat") or 2.5)
+            slope_info = get_slope_params(beta_deg)
+
+            jenis_tanah = str(tn_hit.get("jenis_tanah") or "Regosol")
+            soil_info = get_soil_params(jenis_tanah)
+
+            formasi_batuan = str(bt_hit.get("formasi_batuan") or "Endapan Gunungapi Merapi Muda (Qmi)")
+            rock_info = get_rock_params(formasi_batuan)
+
+            curah_hujan_mm = float(hj_hit.get("curah_hujan_mm") or 2250.0)
+            rain_info = get_rain_params(curah_hujan_mm)
+
+            tutupan_lahan = "Permukiman"
+            land_info = get_land_params(tutupan_lahan, beta_deg)
+
+            skor_l = slope_info["skor"]
+            skor_t = soil_info["skor"]
+            skor_b = rock_info["skor"]
+            skor_h = rain_info["skor"]
+            skor_lh = land_info["skor"]
+
+            c_kpa = soil_info["c"]
+            cr_kpa = land_info["cr"]
+            phi_deg = soil_info["phi"]
+            gamma_sat = soil_info["gamma_sat"]
+            z_depth = soil_info["z"]
+            rasio_m = rain_info["m"]
+            q_kpa = land_info["q"]
+
+            gpkg = calc_gpkg_score(skor_l, skor_t, skor_b, skor_h, skor_lh)
+            fs_res = calc_infinite_slope_fs(beta_deg, c_kpa, cr_kpa, phi_deg, gamma_sat, z_depth, rasio_m, q_kpa)
+
+            skor_akhir = gpkg["skor_akhir"]
+            zona_kode = gpkg["zona_kode"]
+            zona_nama = gpkg["zona"]
+            warna_hex = gpkg["warna_hex"]
+            rekomendasi = gpkg["rekomendasi"]
+            fs_val = fs_res["fs"]
+            fs_status = fs_res["label"]
+            fs_hex = fs_res["hex"]
+            fs_desc = fs_res["desc"]
+            u_kpa = fs_res["u_kpa"]
 
         return jsonify({
             "status": "ok",
@@ -335,7 +547,7 @@ def endpoint_query():
                 "kalurahan": kalurahan,
                 "kapanewon": kapanewon,
                 "kabupaten": kabupaten,
-                "elevasi_mdpl": adm_hit.get("elevasi_mdpl", 115.0),
+                "elevasi_mdpl": elevasi,
             },
             "kondisi_lapangan": {
                 "lereng_derajat": slope_info["beta"],
@@ -351,7 +563,7 @@ def endpoint_query():
                 "curah_hujan_mm": curah_hujan_mm,
                 "skor_hujan": skor_h,
                 "rasio_m": rasio_m,
-                "u_kpa": fs_res["u_kpa"],
+                "u_kpa": u_kpa,
                 "q_kpa": q_kpa,
                 "tutupan_lahan": tutupan_lahan,
             },
@@ -362,19 +574,19 @@ def endpoint_query():
                 "skor_hujan": skor_h,
                 "skor_tutupan": skor_lh,
                 "skor_lahan": skor_lh,
-                "skor_akhir": gpkg["skor_akhir"],
+                "skor_akhir": skor_akhir,
             },
             "triase": {
-                "zona": gpkg["zona"],
-                "zona_kode": gpkg["zona_kode"],
-                "zona_triase": f"{gpkg['zona_kode']} (Skor {gpkg['skor_akhir']:.2f})",
-                "badge": f"SKOR {gpkg['skor_akhir']:.2f} — {gpkg['zona_kode']}",
-                "rekomendasi": gpkg["rekomendasi"],
-                "warna_hex": gpkg["warna_hex"],
-                "fs": fs_res["fs"],
-                "fs_label": fs_res["label"],
-                "fs_warna_hex": fs_res["hex"],
-                "fs_desc": fs_res["desc"],
+                "zona": zona_nama,
+                "zona_kode": zona_kode,
+                "zona_triase": f"{zona_kode} (Skor {skor_akhir:.2f})",
+                "badge": f"SKOR {skor_akhir:.2f} — {zona_kode}",
+                "rekomendasi": rekomendasi,
+                "warna_hex": warna_hex,
+                "fs": fs_val,
+                "fs_label": fs_status,
+                "fs_warna_hex": fs_hex,
+                "fs_desc": fs_desc,
             }
         }), 200
     except Exception as e:
@@ -406,13 +618,19 @@ def endpoint_analisis():
         weighted_beta_sum = 0.0
 
         for feat in DATA_CACHE["kerawanan"]:
+            if "_minx" in feat:
+                # Cepat cek bbox intersection
+                u_minx, u_miny, u_maxx, u_maxy = user_poly.bounds
+                if feat["_maxx"] < u_minx or feat["_minx"] > u_maxx or feat["_maxy"] < u_miny or feat["_miny"] > u_maxy:
+                    continue
+
             kr_poly = shp_shape(feat["geometry"])
             if user_poly.intersects(kr_poly):
                 inter = user_poly.intersection(kr_poly)
                 if inter.is_empty or inter.area <= 0:
                     continue
 
-                p = feat["properties"]
+                p = feat.get("properties", {})
                 luas_m2 = round(inter.area * (111320.0 ** 2) * math.cos(math.radians(-7.8)), 1)
                 persen_luas = round((inter.area / total_area_deg) * 100.0, 1)
 
@@ -421,20 +639,35 @@ def endpoint_analisis():
                 skor_b = int(p.get("skor_batuan", 2))
                 skor_h = int(p.get("skor_hujan", 3))
                 skor_lh = int(p.get("skor_lahan", 3))
-                gpkg = calc_gpkg_score(skor_l, skor_t, skor_b, skor_h, skor_lh)
+                skor_akhir = float(p.get("skor_akhir") or (0.30 * skor_l + 0.25 * skor_t + 0.20 * skor_b + 0.15 * skor_h + 0.10 * skor_lh))
 
-                kat = "Merah" if "MERAH" in gpkg["zona_kode"] else ("Kuning" if "KUNING" in gpkg["zona_kode"] else "Hijau")
+                if skor_akhir < 2.20:
+                    kat = "Hijau"
+                    zona_kode = "ZONA HIJAU"
+                    hex_color = "#10b981"
+                    border_color = "#059669"
+                elif skor_akhir <= 3.40:
+                    kat = "Kuning"
+                    zona_kode = "ZONA KUNING"
+                    hex_color = "#f59e0b"
+                    border_color = "#d97706"
+                else:
+                    kat = "Merah"
+                    zona_kode = "ZONA MERAH"
+                    hex_color = "#ef4444"
+                    border_color = "#dc2626"
 
-                beta_seg = float(p.get("lereng_derajat", 3.5))
+                beta_seg = float(p.get("lereng_derajat", 3.0))
                 c_kpa = float(p.get("c_kpa", 8.0))
                 cr_kpa = float(p.get("cr_kpa", 0.0))
                 phi_deg = float(p.get("phi_deg", 25.0))
                 gamma_sat = float(p.get("gamma_sat", 18.0))
-                z_depth = float(p.get("z_depth", 2.0))
+                z_depth = float(p.get("z", 2.0))
                 rasio_m = float(p.get("rasio_m", 0.60))
                 q_kpa = float(p.get("q_kpa", 15.0))
 
                 fs_res = calc_infinite_slope_fs(beta_seg, c_kpa, cr_kpa, phi_deg, gamma_sat, z_depth, rasio_m, q_kpa)
+                fs_val = float(p.get("fs") or fs_res["fs"])
 
                 proporsi_zona[kat]["luas_m2"] = round(proporsi_zona[kat]["luas_m2"] + luas_m2, 1)
                 proporsi_zona[kat]["persen"] = round(proporsi_zona[kat]["persen"] + persen_luas, 1)
@@ -445,12 +678,12 @@ def endpoint_analisis():
                     "id": f"SEG-{seg_idx:02d}",
                     "properties": {
                         "segmen_id": f"SEG-{seg_idx:02d}",
-                        "zona_triase": f"{gpkg['zona_kode']} (Skor {gpkg['skor_akhir']:.2f})",
-                        "zona_singkat": gpkg["zona"],
+                        "zona_triase": f"{zona_kode} (Skor {skor_akhir:.2f})",
+                        "zona_singkat": f"Zona {kat}",
                         "kategori_zona": kat,
-                        "skor_akhir": gpkg["skor_akhir"],
-                        "warna_hex": gpkg["warna_hex"],
-                        "border_hex": gpkg["border_hex"],
+                        "skor_akhir": skor_akhir,
+                        "warna_hex": hex_color,
+                        "border_hex": border_color,
                         "luas_m2": luas_m2,
                         "persen_luas": persen_luas,
                         "beta_mean": beta_seg,
@@ -462,7 +695,7 @@ def endpoint_analisis():
                         "rasio_m": rasio_m,
                         "u_kpa": fs_res["u_kpa"],
                         "q_kpa": q_kpa,
-                        "fs": fs_res["fs"],
+                        "fs": fs_val,
                         "fs_label": fs_res["label"],
                     },
                     "geometry": mapping(inter),
@@ -487,7 +720,7 @@ def endpoint_analisis():
         return jsonify({"status": "error", "message": str(e)}), 400
 
 # =====================================================================
-# ROUTING HALAMAN WEB & ASET STATIS (BEBAS 404)
+# 6. ROUTING HALAMAN WEB & ASET STATIS (BEBAS 404 & BEBAS STALE CACHE)
 # =====================================================================
 @app.route('/')
 def home():
@@ -501,6 +734,8 @@ def serve_web_dir(filename):
 def serve_public_data(filename):
     if (DATA_DIR / filename).exists():
         return send_from_directory(DATA_DIR, filename)
+    if (ROOT_DIR / "public" / "data" / filename).exists():
+        return send_from_directory(ROOT_DIR / "public" / "data", filename)
     return "File data tidak ditemukan", 404
 
 @app.route('/<path:filename>')
@@ -511,8 +746,13 @@ def serve_static(filename):
         return send_from_directory(DATA_DIR, filename)
     if (ROOT_DIR / "public" / filename).exists():
         return send_from_directory(ROOT_DIR / "public", filename)
+    if (ROOT_DIR / "public" / "data" / filename).exists():
+        return send_from_directory(ROOT_DIR / "public" / "data", filename)
     if filename.startswith("Data/processed/"):
         clean_name = filename.replace("Data/processed/", "")
         if (DATA_DIR / clean_name).exists():
             return send_from_directory(DATA_DIR, clean_name)
     return "File tidak ditemukan", 404
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True)
