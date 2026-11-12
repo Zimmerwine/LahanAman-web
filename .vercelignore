@@ -1,8 +1,2 @@
-scripts/
-scratch/
-tests/
 Data/
-**/__pycache__/
-*.pyc
-.git
-.github
+scripts/

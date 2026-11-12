@@ -1,49 +1,16 @@
 /**
- * config/layersConfig.ts
+ * config/layersConfig.js
  * ============================================================================
- * MODUL 3 & 4: KONFIGURASI METADATA LAYER SPASIAL TEMATIK & REFERENSI
+ * KONFIGURASI METADATA LAYER SPASIAL TEMATIK & REFERENSI (100% PURE JS)
  * LahanAman GeoAnalytics DIY
  *
- * Catatan Arsitektur:
- * - Seluruh label visual, deskripsi, dan legenda telah dibersihkan dari istilah "IDW"
- *   dan diganti menjadi "Curah Hujan Tahunan (Isohyet)".
- * - Path fisik `/data/clean_curah_hujan_idw.geojson` tetap dipertahankan agar tidak
- *   merusak mapping fetch data di produksi/Vercel.
+ * Catatan:
+ * - Seluruh teks visual "IDW" telah dibersihkan menjadi "Curah Hujan Tahunan (Distribusi Isohyet)"
+ * - Path fisik /data/clean_curah_hujan_idw.geojson tetap dipertahankan untuk kompatibilitas.
  * ============================================================================
  */
 
-export type LayerGroupType = "thematic" | "reference";
-export type LegendModeKey = "triase" | "lereng" | "geologi" | "tanah" | "hujan" | "tutupan";
-
-export interface LayerLegendItem {
-  color: string;
-  borderColor?: string;
-  label: string;
-  subLabel?: string;
-}
-
-export interface SpatialLayerConfig {
-  id: string;
-  checkboxId: string;
-  title: string;
-  shortTitle: string;
-  icon: string;
-  group: LayerGroupType;
-  fileName: string;
-  urlPath: string;
-  fallbackUrlPath?: string;
-  defaultVisible: boolean;
-  defaultOpacity: number; // 0.10 - 1.00 (10% - 100%)
-  minOpacity: number;
-  maxOpacity: number;
-  weightPercentage?: number;
-  legendMode?: LegendModeKey;
-  description: string;
-  essentialFields: string[];
-  legendItems: LayerLegendItem[];
-}
-
-export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
+export const SPATIAL_LAYERS_CONFIG = [
   {
     id: "kerawananLongsor",
     checkboxId: "chk-kerawanan-longsor",
@@ -54,14 +21,17 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
     fileName: "clean_kerawanan_longsor.geojson",
     urlPath: "/data/clean_kerawanan_longsor.geojson",
     fallbackUrlPath: "/Data/processed/clean_kerawanan_longsor.geojson",
-    defaultVisible: false,
-    defaultOpacity: 0.60,
+    defaultVisible: true,
+    defaultOpacity: 0.65,
     minOpacity: 0.10,
     maxOpacity: 1.00,
     legendMode: "triase",
     description:
       "Komposit 5 parameter geoteknik (Permen PU No. 22/PRT/M/2007 & SNI 8291:2016): Lereng 30%, Tanah 25%, Batuan 20%, Hujan 15%, Lahan 10%.",
     essentialFields: [
+      "KALURAHAN",
+      "KECAMATAN",
+      "KABUPATEN",
       "kalurahan",
       "kapanewon",
       "kabupaten",
@@ -81,26 +51,27 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
       "skor_lahan",
       "ket_lahan",
       "skor_akhir",
-      "status_zona",
-      "zona_triase",
+      "zona_kelayakan",
       "warna_hex",
+      "fs",
+      "fs_status",
     ],
     legendItems: [
       {
-        color: "#2E7D32",
-        borderColor: "#1B5E20",
+        color: "#10b981",
+        borderColor: "#059669",
         label: "ZONA HIJAU (Skor < 2,20)",
         subLabel: "Datar / Risiko Rendah / Konstruksi Standar",
       },
       {
-        color: "#FB8C00",
-        borderColor: "#BF360C",
+        color: "#f59e0b",
+        borderColor: "#d97706",
         label: "ZONA KUNING (Skor 2,20 – 3,40)",
-        subLabel: "Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud",
+        subLabel: "Risiko Sedang / Perlu Mitigasi Drainase & Talud",
       },
       {
-        color: "#D32F2F",
-        borderColor: "#B71C1C",
+        color: "#ef4444",
+        borderColor: "#dc2626",
         label: "ZONA MERAH (Skor > 3,40)",
         subLabel: "Risiko Tinggi / Rawan Longsor / Non-Buildable",
       },
@@ -126,11 +97,11 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
       "Ekstraksi sudut kemiringan lereng murni (β°) dari DEMNAS resolusi 8,3 m dalam proyeksi metrik UTM Zona 49S (EPSG:32749).",
     essentialFields: ["klasifikasi", "skor", "luas_ha"],
     legendItems: [
-      { color: "#1a9850", label: "Skor 1: 0° – 8° (0% – 14,1%)", subLabel: "Datar – Landai (Zona Aman)" },
-      { color: "#66bd63", label: "Skor 2: >8° – 15° (14,1% – 26,8%)", subLabel: "Landai – Miring (Transisi)" },
-      { color: "#facc15", label: "Skor 3: >15° – 25° (26,8% – 46,6%)", subLabel: "Agak Curam (Kritis Lempung)" },
-      { color: "#f97316", label: "Skor 4: >25° – 35° (46,6% – 70,0%)", subLabel: "Curam (Kritis Batupasir Lapuk)" },
-      { color: "#ef4444", label: "Skor 5: >35° (>70,0%)", subLabel: "Sangat Terjal (Non-Buildable)" },
+      { color: "#10b981", label: "Skor 1: 0° – 8° (0% – 14.1%)", subLabel: "Datar – Landai (Zona Aman)" },
+      { color: "#84cc16", label: "Skor 2: >8° – 15° (14.1% – 26.8%)", subLabel: "Landai – Miring (Transisi)" },
+      { color: "#eab308", label: "Skor 3: >15° – 25° (26.8% – 46.6%)", subLabel: "Agak Curam (Kritis Lempung)" },
+      { color: "#f59e0b", label: "Skor 4: >25° – 35° (46.6% – 70.0%)", subLabel: "Curam (Kritis Batupasir Lapuk)" },
+      { color: "#ef4444", label: "Skor 5: >35° (>70.0%)", subLabel: "Sangat Terjal (Non-Buildable)" },
     ],
   },
   {
@@ -150,14 +121,14 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
     weightPercentage: 25,
     legendMode: "tanah",
     description:
-      "Parameter mekanika tanah lokal DIY (Dasar.xlsx): Kohesi efektif (c'), sudut geser dalam (φ'), berat isi jenuh (γsat), dan kedalaman bidang gelincir (z).",
+      "Parameter mekanika tanah lokal DIY (Dasar.xlsx): Kohesi efektif (c'), sudut geser dalam (φ'), berat isi jenuh (γsat), dan tebal solum (z).",
     essentialFields: ["jns_tnh", "skor tanah", "ket_tanah", "c_kpa", "phi_deg", "gamma_sat", "z", "is_expansive"],
     legendItems: [
-      { color: "#D32F2F", label: "Skor 5: Grumusol", subLabel: "c'=9,0 kPa, φ'=15,0°, γsat=19,0 kN/m³, z=2,0 m" },
-      { color: "#FB8C00", label: "Skor 4: Latosol & Mediteran", subLabel: "c'=10–11 kPa, φ'=18°–20°, γsat=18,5 kN/m³, z=2,0–2,5 m" },
-      { color: "#FFB300", label: "Skor 3: Regosol", subLabel: "c'=3,5 kPa, φ'=36,0°, γsat=17,5 kN/m³, z=1,0 m" },
-      { color: "#66BB6A", label: "Skor 2: Kambisol", subLabel: "c'=8,0 kPa, φ'=30,0°, γsat=18,0 kN/m³, z=2,0 m" },
-      { color: "#2E7D32", label: "Skor 1: Aluvial", subLabel: "c'=14,0 kPa, φ'=25,0°, γsat=18,5 kN/m³, z=4,0 m" },
+      { color: "#ef4444", label: "Skor 5: Grumusol", subLabel: "c'=9,0 kPa, φ'=15,0°, γsat=19,0 kN/m³, z=2,0 m (Ekspansif)" },
+      { color: "#f59e0b", label: "Skor 4: Latosol & Mediteran", subLabel: "c'=10–11 kPa, φ'=18°–20°, γsat=18,5 kN/m³, z=2,0–2,5 m" },
+      { color: "#eab308", label: "Skor 3: Regosol", subLabel: "c'=3,5 kPa, φ'=36,0°, γsat=17,5 kN/m³, z=1,0 m" },
+      { color: "#84cc16", label: "Skor 2: Kambisol", subLabel: "c'=8,0 kPa, φ'=30,0°, γsat=18,0 kN/m³, z=2,0 m" },
+      { color: "#10b981", label: "Skor 1: Aluvial", subLabel: "c'=14,0 kPa, φ'=25,0°, γsat=18,5 kN/m³, z=4,0 m" },
     ],
   },
   {
@@ -177,20 +148,20 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
     weightPercentage: 20,
     legendMode: "geologi",
     description:
-      "Formasi geologi regional DIY dan potensi pembentukan bidang gelincir kedap air maupun diskontinuitas kekar batuan.",
+      "Formasi geologi regional DIY dan potensi pembentukan bidang gelincir lempung/tuf kedap air maupun diskontinuitas kekar batuan.",
     essentialFields: ["NAME", "SYMBOLS", "FORMATION", "skor_batuan", "ket_batuan"],
     legendItems: [
-      { color: "#D32F2F", label: "Skor 5: Semilir (Tmse), Sambipitu (Tmss), Nanggulan (Teon), na", subLabel: "Batuan lemah 1–5 MPa, bidang gelincir kedap" },
-      { color: "#FB8C00", label: "Skor 4: Nglanggran (Tmng), Kebobutak (Tomk)", subLabel: "Kekar rapat, diskontinuitas tinggi (φ'=25°–35°)" },
-      { color: "#FFB300", label: "Skor 3: Sentolo (Tmps), Merapi Tua (Qmo)", subLabel: "Batugamping napalan smektit / vulkanik tua" },
-      { color: "#66BB6A", label: "Skor 2: Merapi Muda (Qmi, Qvu3)", subLabel: "Pasir bergradasi baik SW (φ'=37°–48°)" },
-      { color: "#2E7D32", label: "Skor 1: Wonosari (Tmwl), Aluvial (Qa)", subLabel: "Batugamping terumbu masif / dataran aluvial" },
+      { color: "#ef4444", label: "Skor 5: Semilir (Tmse), Sambipitu (Tmss), Nanggulan (Teon), na", subLabel: "Batuan lemah 1–5 MPa, bidang gelincir kedap" },
+      { color: "#f59e0b", label: "Skor 4: Nglanggran (Tmng), Kebobutak (Tomk)", subLabel: "Kekar rapat, diskontinuitas tinggi (φ'=25°–35°)" },
+      { color: "#eab308", label: "Skor 3: Sentolo (Tmps), Merapi Tua (Qmo)", subLabel: "Batugamping napalan / vulkanik tua" },
+      { color: "#84cc16", label: "Skor 2: Merapi Muda (Qmi, Qvu3)", subLabel: "Pasir bergradasi baik SW (φ'=37°–48°)" },
+      { color: "#10b981", label: "Skor 1: Wonosari (Tmwl), Aluvial (Qa)", subLabel: "Batugamping terumbu masif / dataran aluvial" },
     ],
   },
   {
     id: "hujanIsohyet",
     checkboxId: "chk-hujan",
-    title: "Curah Hujan Tahunan (Isohyet)",
+    title: "Curah Hujan Tahunan (Distribusi Isohyet)",
     shortTitle: "Curah Hujan (Isohyet)",
     icon: "🌧️",
     group: "thematic",
@@ -207,23 +178,23 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
       "Zona isohyet curah hujan tahunan (mm/tahun) dan korelasi rasio kejenuhan air tanah (m = hw/z) terhadap tekanan air pori.",
     essentialFields: ["curah_hujan_mm", "skor_hujan", "rasio_m", "ket_hujan", "warna_hex"],
     legendItems: [
-      { color: "#FF1A00", label: "Skor 5: > 3.000 mm/tahun", subLabel: "Rasio kejenuhan m = 0,90" },
-      { color: "#FF8C00", label: "Skor 4: 2.501 – 3.000 mm/tahun", subLabel: "Rasio kejenuhan m = 0,75" },
-      { color: "#FFFF00", borderColor: "#94a3b8", label: "Skor 3: 2.001 – 2.500 mm/tahun", subLabel: "Rasio kejenuhan m = 0,60" },
-      { color: "#66CC00", label: "Skor 2: 1.500 – 2.000 mm/tahun", subLabel: "Rasio kejenuhan m = 0,45" },
-      { color: "#1F7A1F", label: "Skor 1: < 1.500 mm/tahun", subLabel: "Rasio kejenuhan m = 0,30" },
+      { color: "#ef4444", label: "Skor 5: > 3.000 mm/tahun", subLabel: "Rasio kejenuhan m = 0,90" },
+      { color: "#f59e0b", label: "Skor 4: 2.501 – 3.000 mm/tahun", subLabel: "Rasio kejenuhan m = 0,75" },
+      { color: "#eab308", label: "Skor 3: 2.001 – 2.500 mm/tahun", subLabel: "Rasio kejenuhan m = 0,60" },
+      { color: "#84cc16", label: "Skor 2: 1.500 – 2.000 mm/tahun", subLabel: "Rasio kejenuhan m = 0,45" },
+      { color: "#10b981", label: "Skor 1: < 1.500 mm/tahun", subLabel: "Rasio kejenuhan m = 0,30" },
     ],
   },
   {
     id: "tutupan",
     checkboxId: "chk-tutupan",
-    title: "Tutupan Lahan (RBI 25K)",
+    title: "Tutupan Lahan (Land Cover DIY)",
     shortTitle: "Tutupan Lahan",
     icon: "🏡",
     group: "thematic",
-    fileName: "clean_tutupan_lahan_diy.geojson",
-    urlPath: "/data/clean_tutupan_lahan_diy.geojson",
-    fallbackUrlPath: "/Data/processed/clean_tutupan_lahan_diy.geojson",
+    fileName: "clean_tutupan_lahan_sleman_bantul.geojson",
+    urlPath: "/data/clean_tutupan_lahan_sleman_bantul.geojson",
+    fallbackUrlPath: "/Data/processed/clean_tutupan_lahan_sleman_bantul.geojson",
     defaultVisible: false,
     defaultOpacity: 0.60,
     minOpacity: 0.10,
@@ -231,20 +202,20 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
     weightPercentage: 10,
     legendMode: "tutupan",
     description:
-      "Peran tutupan lahan terhadap kohesi perakaran vegetasi (cr) dan beban tambahan permukaan/konstruksi (surcharge load q).",
+      "Peran tutupan lahan terhadap kohesi perakaran vegetasi (cr) dan beban tambahan surcharge konstruksi (q).",
     essentialFields: ["pl", "klasifikasi", "skor_lahan", "ket_lahan", "warna_hex"],
     legendItems: [
-      { color: "#D32F2F", label: "Skor 5: Tanah Terbuka / Tegalan / Sawah (>8°)", subLabel: "cr = 0 kPa, q = 0 kPa" },
-      { color: "#FB8C00", label: "Skor 4: Semak Belukar / Alang-alang", subLabel: "cr = 0,5 kPa, q = 0 kPa" },
-      { color: "#FFB300", label: "Skor 3: Permukiman / Bangunan / Jalan", subLabel: "cr = 0 kPa, beban q = 15 kPa" },
-      { color: "#66BB6A", label: "Skor 2: Perkebunan / Kebun Campuran", subLabel: "cr = 3,5 kPa, q = 0 kPa" },
-      { color: "#2E7D32", label: "Skor 1: Hutan Lahan Kering / Lindung / Air", subLabel: "cr = 10,0 kPa, q = 0 kPa" },
+      { color: "#ef4444", label: "Skor 5: Tanah Terbuka / Tegalan / Sawah (>8°)", subLabel: "cr = 0 kPa, q = 0 kPa" },
+      { color: "#f59e0b", label: "Skor 4: Semak Belukar / Alang-alang", subLabel: "cr = 0,5 kPa, q = 0 kPa" },
+      { color: "#eab308", label: "Skor 3: Permukiman / Bangunan / Kawasan Terbangun", subLabel: "cr = 0 kPa, beban q = 15 kPa" },
+      { color: "#84cc16", label: "Skor 2: Perkebunan / Kebun Campuran", subLabel: "cr = 3,5 kPa, q = 0 kPa" },
+      { color: "#10b981", label: "Skor 1: Hutan Lindung / Kawasan Konservasi / Air", subLabel: "cr = 10,0 kPa, q = 0 kPa" },
     ],
   },
   {
     id: "admin",
     checkboxId: "chk-admin",
-    title: "Garis Batas Administratif",
+    title: "Batas Administrasi Resmi BIG",
     shortTitle: "Batas Administrasi",
     icon: "🗺️",
     group: "reference",
@@ -255,15 +226,15 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
     defaultOpacity: 0.70,
     minOpacity: 0.10,
     maxOpacity: 1.00,
-    description: "Batas administrasi resmi Kalurahan/Kelurahan dan Kapanewon/Kemantren di DIY.",
-    essentialFields: ["kabupaten", "kapanewon", "kalurahan", "luas_ha"],
+    description: "Batas administrasi resmi Kalurahan/Kelurahan, Kapanewon, dan Kabupaten di DIY.",
+    essentialFields: ["KABUPATEN", "KECAMATAN", "KALURAHAN", "luas_ha"],
     legendItems: [],
   },
   {
     id: "titikDev",
     checkboxId: "chk-titik-dev",
     title: "Titik Uji Sampel Developer",
-    shortTitle: "Titik Sampel Developer",
+    shortTitle: "Titik Developer",
     icon: "📍",
     group: "reference",
     fileName: "clean_titik_developer.geojson",
@@ -309,7 +280,7 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
     defaultOpacity: 0.95,
     minOpacity: 0.10,
     maxOpacity: 1.00,
-    description: "Jaringan 20 stasiun penakar hujan BBWS Serayu Opak & BMKG DIY.",
+    description: "Jaringan stasiun penakar hujan BBWS Serayu Opak & BMKG DIY.",
     essentialFields: ["kode_pos", "nama_pos", "kabupaten", "rerata_ch_tahunan"],
     legendItems: [],
   },
@@ -333,6 +304,6 @@ export const SPATIAL_LAYERS_CONFIG: SpatialLayerConfig[] = [
   },
 ];
 
-export function getLayerConfigById(id: string): SpatialLayerConfig | undefined {
+export function getLayerConfigById(id) {
   return SPATIAL_LAYERS_CONFIG.find((l) => l.id === id || l.checkboxId === id);
 }

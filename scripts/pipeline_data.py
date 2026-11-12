@@ -539,7 +539,7 @@ def classify_gpkg_zone(skor_akhir: float) -> Tuple[str, str, str, str]:
             "#2E7D32",
             "#1B5E20",
         )
-    if skor_akhir <= 3.40:
+    if (skor_akhir <= 3.40) and (skor_akhir > 2.20):
         return (
             "Zona Kuning",
             "ZONA KUNING (Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud)",
@@ -652,7 +652,7 @@ def optimize_geometry_5dec(geom_dict: Optional[Dict[str, Any]]) -> None:
 
 
 def clean_idw_strings(val: Any) -> Any:
-    """Bersihkan istilah visual 'Kontur IDW' / 'IDW' menjadi 'Isohyet' pada string properti."""
+    """Bersihkan istilah visuald 'Kontur IDW' / 'IDW' menjadi 'Isohyet' pada string properti."""
     if not isinstance(val, str):
         return val
     cleaned = val.replace("Kontur IDW", "Isohyet").replace("Curah Hujan IDW", "Curah Hujan Tahunan (Isohyet)")
@@ -899,7 +899,7 @@ def process_layer(
             ch_val = float(p.get("curah_hujan_mm") or p.get("ch_idw_area_mm") or p.get("ch_idw_titik_mm") or 2250.0)
             p["curah_hujan_mm"] = int(round(ch_val))
 
-        # Saring hanya kolom esensial dan bersihkan istilah "IDW"
+        
         if keep_cols:
             filtered_p = {k: clean_idw_strings(p[k]) for k in keep_cols if k in p}
         else:
