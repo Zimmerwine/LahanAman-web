@@ -899,7 +899,6 @@ def process_layer(
             ch_val = float(p.get("curah_hujan_mm") or p.get("ch_idw_area_mm") or p.get("ch_idw_titik_mm") or 2250.0)
             p["curah_hujan_mm"] = int(round(ch_val))
 
-        
         if keep_cols:
             filtered_p = {k: clean_idw_strings(p[k]) for k in keep_cols if k in p}
         else:
