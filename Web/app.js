@@ -1549,7 +1549,7 @@
     const parameterRows = [
       {
         key: "lereng",
-        label: "Kemiringan lereng",
+        label: "Kemiringan tanah",
         symbol: "β",
         bobot: "30%",
         skor: lereng.skor,
@@ -1560,7 +1560,7 @@
       },
       {
         key: "tanah",
-        label: "Karakteristik tanah",
+        label: "Jenis dan kondisi tanah",
         symbol: "pedologi",
         bobot: "25%",
         skor: pedologi.skor,
@@ -1571,7 +1571,7 @@
       },
       {
         key: "batuan",
-        label: "Litologi dan formasi",
+        label: "Jenis batuan",
         symbol: "geologi",
         bobot: "20%",
         skor: litologi.skor,
@@ -1593,7 +1593,7 @@
       },
       {
         key: "lahan",
-        label: "Tutupan lahan",
+        label: "Penggunaan lahan",
         symbol: "tutupan",
         bobot: "10%",
         skor: tutupan.skor,

@@ -2872,6 +2872,11 @@ body .mobile-panel-btn {
     height: 32px;
   }
 
+  .topbar {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
   .brand-mark svg {
     width: 24px;
     height: 24px;
@@ -4200,12 +4205,12 @@ body .mobile-panel-btn {
 
 .spk-data-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1.4fr) minmax(82px, 1fr) 54px 76px;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 0.3fr) minmax(76px, 0.3fr);
   gap: 6px;
   align-items: center;
   padding: 5px 7px;
   border-top: 1px solid var(--border);
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .spk-data-row:first-child {
@@ -4214,7 +4219,7 @@ body .mobile-panel-btn {
 
 .spk-data-row--head {
   background: var(--surface-subtle);
-  font-size: 7.2px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -4229,10 +4234,19 @@ body .mobile-panel-btn {
 
 .spk-data-cell--primary {
   display: flex;
-  align-items: center;
-  gap: 5px;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
   font-weight: 600;
   color: var(--text-body);
+}
+
+.spk-land-use-description {
+  display: block;
+  font-size: 8px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .spk-data-cell--num {

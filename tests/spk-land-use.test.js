@@ -115,6 +115,7 @@ test("land-use normalization preserves source classes and reports coverage", () 
   assert.equal(result.classes[0].className, "Tegalan/Ladang");
   assert.equal(result.classes[0].groupLabel, "Pertanian dan perkebunan");
   assert.equal(result.coveragePercent, 95);
+  assert.equal(result.overlapAreaM2, 0);
   assert.match(result.summaryText, /2 kelas guna lahan/);
   assert.match(result.summaryText, /95,0%/);
   assert.equal(result.features[0].color, "#EF4444");

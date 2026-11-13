@@ -11,9 +11,9 @@
   const TABS = [
     { id: "summary", label: "Ringkasan SPK" },
     { id: "criteria", label: "Analisis Kriteria" },
-    { id: "slope", label: "Stabilitas Lereng" },
+    { id: "slope", label: "Kestabilan Lereng (FS)" },
     { id: "development", label: "Alternatif Pengembangan" },
-    { id: "constraints", label: "Pembatas Spasial" },
+    { id: "constraints", label: "Penggunaan Lahan dan Informasi" },
     { id: "decision", label: "Keputusan Pengguna" },
   ];
 
@@ -263,7 +263,7 @@
         area;
     } else {
       els.subtitle.textContent =
-        "WLC, stabilitas lereng, pembatas spasial, dan keputusan pengguna.";
+        "Ringkasan kondisi lahan, kestabilan lereng, penggunaan lahan, dan keputusan pemeriksa.";
     }
   }
 
@@ -298,7 +298,7 @@
       Number(coverage) < 80
         ? '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Cakupan data terbatas</span><span class="spk-alert-text">Hanya ' +
           fmtPercent(coverage) +
-          " luas poligon yang tercakup layer kerawanan. Bagian yang tidak tercakup tidak boleh dianggap aman.</span></div>"
+          " luas area yang diperiksa memiliki data penilaian. Bagian tanpa data tidak boleh dianggap aman.</span></div>"
         : "";
 
     const activeWarning = active
@@ -311,33 +311,30 @@
 
     const weightsHtml = custom
       ? renderWeights(config)
-      : '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Bobot riset standar</span><span class="spk-alert-text">Lereng 30%, tanah 25%, geologi 20%, curah hujan 15%, tutupan lahan 10%. Profil ini mereproduksi skor GPKG yang sudah ada.</span></div>';
+      : '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Bobot standar penelitian</span><span class="spk-alert-text">Kemiringan tanah 30%, tanah 25%, batuan 20%, hujan 15%, dan penggunaan lahan 10%. Pilihan ini mempertahankan hasil penilaian standar yang sudah ada.</span></div>';
 
     els.body.innerHTML =
       renderError() +
       '<section class="spk-section">' +
       '<div class="spk-location-card">' +
-      '<div class="spk-section-head"><div><p class="panel-eyebrow">Lokasi evaluasi</p><h3>Poligon kavling</h3>' +
+      '<div class="spk-section-head"><div><p class="panel-eyebrow">Area pemeriksaan</p><h3>Lokasi yang diperiksa</h3>' +
       '<p>' +
       escapeHtml(activeLabel) +
       " • " +
       escapeHtml(String((ctx.segments || []).length)) +
-      " segmen</p></div>" +
-      '<span class="spk-tag">' +
-      escapeHtml(ctx.crs || "EPSG:4326") +
-      "</span></div>" +
+      " bagian</p></div></div>" +
       '<div class="spk-location-grid">' +
       metric("Luas poligon", fmtArea(area), "Batas poligon yang dievaluasi") +
-      metric("Cakupan data", coverage != null ? fmtPercent(coverage) : "-", fmtArea(summary.total_luas_m2) + " terklasifikasi") +
-      metric("Segmen", String((ctx.segments || []).length), "Hasil overlay kerawanan") +
+      metric("Cakupan data", coverage != null ? fmtPercent(coverage) : "-", fmtArea(summary.total_luas_m2) + " memiliki data") +
+      metric("Bagian area", String((ctx.segments || []).length), "Bagian yang dianalisis") +
       "</div></div></section>" +
       coverageWarning +
       activeWarning +
       '<section class="spk-section">' +
-      '<div class="spk-section-head"><div><h3>Pilih profil bobot</h3><p>Nilai kepentingan 1–5 berbeda dari skor kriteria 1–5. Bobot dinormalisasi sampai total 100%.</p></div></div>' +
+      '<div class="spk-section-head"><div><h3>Pilih cara memberi bobot</h3><p>Gunakan bobot standar penelitian atau atur tingkat kepentingan setiap faktor.</p></div></div>' +
       '<div class="spk-profile-grid">' +
-      renderProfileCard("standard", "Profil riset standar", "30/25/20/15/10", "Terdefinisi dan terkalibrasi pada skor GPKG. Gunakan untuk mereproduksi hasil riset.", !custom) +
-      renderProfileCard("custom", "Profil kustom", "5/4/3/3/2", "Bobot dinamis sesuai preferensi pengguna. Belum dikalibrasi; ambang zona standar tidak dipakai.", custom) +
+      renderProfileCard("standard", "Bobot standar penelitian", "30/25/20/15/10", "Pakai pilihan ini untuk mempertahankan hasil penilaian standar.", !custom) +
+      renderProfileCard("custom", "Atur bobot sendiri", "5/4/3/3/2", "Pilih tingkat kepentingan tiap faktor. Hasilnya tidak memakai pembagian tingkat kerawanan standar.", custom) +
       "</div>" +
       weightsHtml +
       "</section>" +
@@ -347,7 +344,7 @@
       (active ? '<button type="button" class="btn btn-secondary" id="spk-view-last">Lihat hasil terakhir</button>' : "") +
       '<button type="button" class="btn btn-secondary" id="spk-config-cancel">Tutup</button>' +
       "</div>" +
-      '<p class="spk-inline-note">Evaluasi memakai skor kriteria mentah, bukan skor akhir GPKG. FS dihitung terpisah. Data pembatas legal yang tidak tersedia akan ditandai belum dievaluasi.</p>' +
+      '<p class="spk-inline-note">Ini merupakan pemeriksaan awal berdasarkan data yang tersedia. Informasi batas resmi kawasan dan tata ruang belum tersedia untuk diperiksa.</p>' +
       "</section>";
 
     bindConfigEvents();
@@ -412,7 +409,7 @@
           criterion.key +
           '">' +
           '<span class="spk-weight-label"><b>' +
-          escapeHtml(criterion.label) +
+          escapeHtml(({ slope: "Kemiringan tanah", soil: "Jenis dan kondisi tanah", geology: "Jenis batuan", rainfall: "Jumlah curah hujan", landCover: "Penggunaan lahan" })[criterion.key] || criterion.label) +
           "</b><span>" +
           escapeHtml(criterion.source) +
           "</span></span>" +
@@ -430,7 +427,7 @@
           "</span></div>"
         );
       }).join("") +
-      '<div class="spk-weight-total"><span>Total kepentingan</span><span><b id="spk-weight-total-value">' +
+      '<div class="spk-weight-total"><span>Jumlah tingkat kepentingan</span><span><b id="spk-weight-total-value">' +
       total +
       '</b> • bobot dinormalisasi 100% <button type="button" class="text-button" id="spk-reset-weights">Reset 5/4/3/3/2</button></span></div>' +
       "</div>"
@@ -609,7 +606,7 @@
     const alerts = [];
     if (custom) {
       alerts.push(
-        '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Indeks kustom belum terkalibrasi</span><span class="spk-alert-text">Nilai ini bukan zona resmi dan tidak memakai ambang 2,20/3,40. Gunakan skor riset standar sebagai pembanding.</span></div>'
+        '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Bobot pilihan belum diuji sebagai standar</span><span class="spk-alert-text">Hasil ini tidak memakai pembagian tingkat kerawanan standar. Gunakan hasil standar penelitian sebagai pembanding.</span></div>'
       );
     }
     warnings.slice(0, 2).forEach(function (warning) {
@@ -621,7 +618,7 @@
     });
     if (legalUnknown) {
       alerts.push(
-        '<div class="spk-alert spk-alert--error"><span class="spk-alert-title">Pembatas legal belum tersedia</span><span class="spk-alert-text">RTRW, kawasan lindung, dan sempadan belum dapat diverifikasi. Hasil WLC bukan izin dan tidak membuktikan tidak adanya batasan.</span></div>'
+      '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Batas resmi belum tersedia</span><span class="spk-alert-text">Data tata ruang dan batas resmi kawasan perlindungan belum tersedia untuk diperiksa. Hasil analisis bukan izin pembangunan.</span></div>'
       );
     }
 
@@ -635,12 +632,12 @@
       escapeHtml(new Date(assessment.createdAt).toLocaleString("id-ID")) +
       "</p></div>" +
       '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;"><span class="spk-tag">' +
-      escapeHtml(active.calibrated ? "TERKALIBRASI" : "BELUM TERKALIBRASI") +
+      escapeHtml(custom ? "BOBOT PILIHAN" : "BOBOT STANDAR") +
       '</span><button type="button" class="btn btn-secondary" id="spk-edit-config" style="height:26px;padding:0 8px;font-size:9px;">Ubah parameter</button></div></div>' +
       '<div class="spk-score-grid">' +
-      scoreCard(custom ? "Indeks kustom" : "Skor WLC", fmt(active.score, 2), activeClass, true) +
-      scoreCard("Skor riset standar", fmt(assessment.standard.score, 2), standardClass, false) +
-      scoreCard("FS minimum", fsMin != null ? fmt(fsMin, 2) : "-", "Terpisah dari WLC", false) +
+      scoreCard(custom ? "Nilai dengan bobot pilihan" : "Nilai penilaian", fmt(active.score, 2), activeClass, true) +
+      scoreCard("Nilai standar penelitian", fmt(assessment.standard.score, 2), standardClass, false) +
+      scoreCard("Kestabilan lereng terendah (FS)", fsMin != null ? fmt(fsMin, 2) : "-", "Dihitung terpisah", false) +
       scoreCard("Cakupan data", coverage != null ? fmtPercent(coverage * 100) : "-", fmtArea(assessment.location.coveredAreaM2), false) +
       "</div>" +
       alerts.join("") +
@@ -712,21 +709,21 @@
     return (
       '<div class="spk-section">' +
       '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">' +
-      escapeHtml(custom ? "Indeks kustom sebagai pembanding" : "Skor WLC standar") +
+      escapeHtml(custom ? "Nilai dengan bobot pilihan" : "Nilai standar penelitian") +
       '</span><span class="spk-alert-text">' +
       escapeHtml(
         custom
-          ? "Zona di bawah adalah klasifikasi riset standar untuk konteks, bukan klasifikasi indeks kustom."
-          : "Skor WLC berasal dari lima skor kriteria mentah dan bobot riset. Infinite Slope FS ditampilkan terpisah."
+          ? "Pembagian zona di bawah memakai bobot standar penelitian sebagai pembanding."
+          : "Nilai ini merangkum lima faktor lahan. Kestabilan lereng dihitung secara terpisah."
       ) +
       "</span></div>" +
       '<div class="spk-kpi-grid">' +
       kpi("Segmen", String(assessment.location.segmentCount), assessment.location.completeSegmentCount + " segmen lengkap") +
       kpi("Luas poligon", fmtArea(total), assessment.location.coveredAreaM2 + " m² tercakup") +
-      kpi("Skor WLC aktif", fmt(active.score, 2), active.label) +
-      kpi("FS minimum", assessment.infiniteSlope.min != null ? fmt(assessment.infiniteSlope.min, 2) : "-", assessment.infiniteSlope.classification ? assessment.infiniteSlope.classification.label : "tidak tersedia") +
+      kpi("Nilai penilaian", fmt(active.score, 2), active.label) +
+      kpi("Kestabilan lereng terendah (FS)", assessment.infiniteSlope.min != null ? fmt(assessment.infiniteSlope.min, 2) : "-", assessment.infiniteSlope.classification ? assessment.infiniteSlope.classification.label : "tidak tersedia") +
       "</div>" +
-      '<div class="spk-stack"><div class="spk-section-head"><div><h3>Distribusi zona riset standar</h3><p>Persentase dihitung terhadap luas poligon; area yang tidak tercakup tetap terlihat.</p></div></div>' +
+      '<div class="spk-stack"><div class="spk-section-head"><div><h3>Pembagian tingkat kerawanan (standar penelitian)</h3><p>Proporsi dihitung dari luas area yang diperiksa. Bagian tanpa data tetap ditampilkan.</p></div></div>' +
       '<div class="spk-stack-bar" role="img" aria-label="Distribusi zona">' +
       '<span class="spk-stack-seg hijau" style="width:' + pctWidth(z.hijau.percentOfPolygon) + '%"></span>' +
       '<span class="spk-stack-seg kuning" style="width:' + pctWidth(z.kuning.percentOfPolygon) + '%"></span>' +
@@ -751,7 +748,7 @@
         lowest ? fmt(lowest.score, 2) + " • " + fmtArea(lowest.areaM2) : "tidak tersedia"
       ) +
       "</div>" +
-      '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Cara membaca hasil</span><span class="spk-alert-text">Skor WLC menunjukkan kerawanan relatif dari lima kriteria. FS menunjukkan kestabilan lereng dan tidak boleh digabungkan ke WLC. Keduanya harus dibaca bersama pembatas legal dan verifikasi lapangan.</span></div>' +
+      '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Cara membaca hasil</span><span class="spk-alert-text">Hasil ini menggambarkan kondisi relatif berdasarkan lima faktor dan data yang tersedia. Periksa juga penggunaan lahan, kelengkapan data, serta kebutuhan pemeriksaan lapangan.</span></div>' +
       '<details class="spk-section"><summary class="spk-section-desc" style="cursor:pointer;color:var(--blue);font-weight:600;">Metode, sumber data, dan batasan</summary>' +
       '<div class="spk-source-list">' +
       assessment.metadata.datasetRefs.map(function (source) { return "<code>" + escapeHtml(source) + "</code>"; }).join("") +
@@ -814,9 +811,16 @@
       })
       .join("");
 
+    const criterionLabels = {
+      slope: "Kemiringan tanah",
+      soil: "Jenis dan kondisi tanah",
+      geology: "Jenis batuan",
+      rainfall: "Jumlah curah hujan",
+      landCover: "Penggunaan lahan",
+    };
     return (
       '<div class="spk-section">' +
-      '<div class="spk-section-head"><div><h3>Skor kriteria dan bobot</h3><p>Skor 1 = kontribusi rendah, 5 = kontribusi tinggi terhadap kerawanan. Bobot kustom berasal dari nilai kepentingan 1–5 yang dinormalisasi.</p></div>' +
+      '<div class="spk-section-head"><div><h3>Faktor yang dinilai</h3><p>Nilai pengaruh menunjukkan sumbangan tiap faktor pada hasil penilaian. Persentase bobot menunjukkan porsi faktor dalam perhitungan.</p></div>' +
       '<span class="spk-tag">' +
       escapeHtml(custom ? "KUSTOM" : "STANDAR") +
       "</span></div>" +
@@ -831,21 +835,22 @@
           return (
             '<div class="spk-criterion">' +
             '<div class="spk-criterion-head"><div><div class="spk-criterion-title">' +
-            escapeHtml(criterion.label) +
+            escapeHtml(criterionLabels[criterion.key] || criterion.label) +
             '</div><div class="spk-criterion-meta"><span>Skor <b>' +
             (score != null ? fmt(score, 2) : "–") +
             "</b></span><span>" +
-            (custom ? "Kepentingan <b>" + criterion.importance + "</b>" : "Bobot <b>" + fmtPercent(criterion.weightPercent) + "</b>") +
-            "</span><span>Kontribusi <b>" +
+            (custom ? "Tingkat kepentingan <b>" + criterion.importance + " dari 5</b>" : "Bobot <b>" + fmtPercent(criterion.weightPercent) + "</b>") +
+            "</span><span>Pengaruh pada nilai akhir <b>" +
             (criterion.contribution != null ? fmt(criterion.contribution, 3) : "–") +
             "</b></span><span>" +
-            escapeHtml(criterion.dataStatus === "complete" ? "lengkap" : criterion.dataStatus === "partial" ? "sebagian" : "tidak tersedia") +
+            escapeHtml(criterion.dataStatus === "complete" ? "data lengkap" : criterion.dataStatus === "partial" ? "data sebagian" : "data belum tersedia") +
             "</span></div></div>" +
             '<span class="spk-criterion-score">' +
             (score != null ? fmt(score, 1) : "–") +
             "</span></div>" +
             '<div class="spk-criterion-bar"><span style="width:' + bar + '%"></span></div>' +
             '<div class="spk-criterion-actual">' +
+            escapeHtml(criterionExplanation(criterion.key)) + " " +
             escapeHtml(criterion.actualSummary != null ? formatActual(criterion.key, criterion.actualSummary) : "Nilai aktual tidak tersedia.") +
             " " +
             escapeHtml(standardNote) +
@@ -854,8 +859,8 @@
         })
         .join("") +
       "</div></div>" +
-      '<div class="spk-section"><div class="spk-section-head"><div><h3>Matriks segmen</h3><p>Klik baris atau segmen di peta untuk menyorot dan memeriksa segmen.</p></div></div>' +
-      '<div class="spk-table-wrap"><table class="spk-table"><thead><tr><th>Segmen</th><th>Lereng</th><th>Tanah</th><th>Geologi</th><th>Hujan</th><th>Lahan</th><th>WLC</th><th>FS</th></tr></thead><tbody>' +
+      '<div class="spk-section"><div class="spk-section-head"><div><h3>Rincian bagian lahan</h3><p>Pilih baris atau bagian pada peta untuk melihat lokasinya.</p></div></div>' +
+      '<div class="spk-table-wrap"><table class="spk-table"><thead><tr><th>Bagian</th><th>Kemiringan</th><th>Tanah</th><th>Batuan</th><th>Hujan</th><th>Penggunaan lahan</th><th>Nilai</th><th>FS</th></tr></thead><tbody>' +
       rows +
       "</tbody></table></div>" +
       '<p class="spk-inline-note">Tanda “data kurang” berarti skor kriteria tidak lengkap. Segmen tersebut tidak diikutkan dalam agregasi WLC.</p></div>'
@@ -869,6 +874,17 @@
     return "Nilai dominan: " + String(value) + ".";
   }
 
+  function criterionExplanation(key) {
+    const explanations = {
+      slope: "Menunjukkan tingkat kemiringan permukaan tanah di lokasi ini.",
+      soil: "Menggambarkan jenis dan kondisi tanah yang tercatat pada data.",
+      geology: "Menunjukkan jenis batuan yang tercatat pada data.",
+      rainfall: "Menunjukkan jumlah curah hujan yang tercatat untuk lokasi ini.",
+      landCover: "Menunjukkan penggunaan lahan yang tercatat pada data.",
+    };
+    return explanations[key] || "Informasi ini berasal dari data yang tersedia untuk lokasi.";
+  }
+
   function renderSlopeTab(assessment) {
     const slope = assessment.infiniteSlope;
     const worst = slope.worstSegment;
@@ -879,16 +895,16 @@
     const counts = slope.counts || { stabil: 0, kritis: 0, labil: 0 };
     return (
       '<div class="spk-section">' +
-      '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">FS tidak digabungkan ke WLC</span><span class="spk-alert-text">Infinite Slope FS dihitung terpisah dari skor kerawanan. Jangan menambahkan atau mengalikan FS ke WLC. FS minimum adalah indikator kestabilan yang harus diperiksa bersama WLC.</span></div>' +
+      '<div class="spk-section-head"><div><h3>Kestabilan Lereng (FS)</h3><p>Nilai ini membantu memperkirakan kemampuan lereng dalam menahan kemungkinan pergerakan tanah.</p></div></div>' +
       '<div class="spk-fs-grid">' +
       kpi("FS minimum", slope.min != null ? fmt(slope.min, 2) : "-", slope.classification ? slope.classification.label : "tidak tersedia") +
-      kpi("FS rerata", slope.mean != null ? fmt(slope.mean, 2) : "-", "Berbobot luas segmen") +
-      kpi("FS maksimum", slope.max != null ? fmt(slope.max, 2) : "-", "Segmen paling stabil") +
+      kpi("FS rerata", slope.mean != null ? fmt(slope.mean, 2) : "-", "Rata-rata tiap segmen berdasarkan luas") +
+      kpi("FS maksimum", slope.max != null ? fmt(slope.max, 2) : "-", "Nilai tertinggi pada segmen") +
       "</div>" +
       '<div class="spk-kpi-grid" style="margin-top:8px;">' +
-      kpi("FS > 1,25", String(counts.stabil || 0), "Segmen stabil") +
-      kpi("FS 1,07–1,25", String(counts.kritis || 0), "Segmen kritis") +
-      kpi("FS < 1,07", String(counts.labil || 0), "Segmen labil") +
+      kpi("FS > 1,25", String(counts.stabil || 0), "Segmen pada kategori stabil") +
+      kpi("FS 1,07–1,25", String(counts.kritis || 0), "Segmen pada kategori kritis") +
+      kpi("FS < 1,07", String(counts.labil || 0), "Segmen pada kategori labil") +
       kpi("Segmen kritis", worst ? escapeHtml(worst.segmentId) : "-", worst ? fmtArea(worst.areaM2) : "tidak tersedia") +
       "</div>" +
       (geo
@@ -907,7 +923,7 @@
           "</div></div>"
         : "") +
       '<div class="spk-disclaimer"><b>Ambang FS:</b> stabil &gt; 1,25; kritis 1,07–1,25; labil &lt; 1,07. Ambang ini terpisah dari ambang zona WLC.</div>' +
-      '<p class="spk-inline-note">FS minimum lebih penting daripada rerata untuk peringatan awal. Segmen dengan FS rendah harus diperiksa secara individual.</p></div>'
+      '<p class="spk-inline-note">Perhitungan ini merupakan pemeriksaan awal berdasarkan data yang tersedia, bukan jaminan bahwa suatu lokasi aman untuk dibangun. Segmen dengan nilai rendah perlu diperiksa lebih lanjut.</p></div>'
     );
   }
 
@@ -931,6 +947,14 @@
       '<div class="spk-scenario-list">' +
       rec.scenarios
         .map(function (scenario) {
+          const scenarioCopy = {
+            contour_adaptive: ["Menyesuaikan tapak mengikuti kontur", "Penyesuaian bentuk tapak dapat mengurangi perubahan lereng. Drainase dan kestabilan tetap perlu diperiksa."],
+            terraced: ["Membuat teras pada lereng", "Teras dapat membagi panjang lereng, tetapi mengubah bentuk dan beban lereng."],
+            controlled_cut: ["Pemotongan lereng terkendali", "Pemotongan lereng perlu dikaji untuk mengetahui dampaknya pada kestabilan dan area sekitar."],
+            controlled_fill: ["Penimbunan terkendali", "Penimbunan perlu diperiksa terhadap kekuatan tanah, penurunan, kestabilan, dan aliran air."],
+            cut_and_fill: ["Pemotongan dan penimbunan terkendali", "Pekerjaan galian dan timbunan perlu dikaji bersama karena dapat mengubah kestabilan dan aliran air."],
+            no_development: ["Tidak membangun atau melakukan kajian lanjutan", "Pilihan untuk menunda pembangunan sampai pemeriksaan tambahan selesai."],
+          }[scenario.id] || [scenario.label, scenario.summary];
           return (
             '<details class="spk-scenario ' +
             (scenario.isPreferredForStudy ? "is-preferred" : "") +
@@ -938,9 +962,9 @@
             '<summary class="spk-scenario-head"><span class="spk-scenario-code">' +
             escapeHtml(scenario.code) +
             '</span><span class="spk-scenario-title"><b>' +
-            escapeHtml(scenario.label) +
+            escapeHtml(scenarioCopy[0]) +
             "</b><span>" +
-            escapeHtml(scenario.summary) +
+            escapeHtml(scenarioCopy[1]) +
             '</span></span><span class="spk-status spk-status--' +
             scenario.tone +
             '">' +
@@ -1000,18 +1024,26 @@
 
   function renderLandUseSection(assessment) {
     const report = LandUse.normalize(assessment.landUse);
+    const descriptions = {
+      "Hutan Lindung": "Area yang tercatat sebagai hutan lindung dalam data penggunaan lahan.",
+      "Hutan Konservasi": "Area yang tercatat sebagai hutan konservasi dalam data penggunaan lahan.",
+      "Hutan Produksi": "Area yang tercatat sebagai hutan produksi dalam data penggunaan lahan.",
+      "Candi Prambanan": "Area yang diberi label Candi Prambanan dalam data penggunaan lahan.",
+      "Permukiman": "Area yang tercatat sebagai tempat tinggal dan lingkungan permukiman.",
+      "Kebun": "Area yang tercatat sebagai kebun.",
+      "Sawah Irigasi": "Area yang tercatat sebagai sawah irigasi.",
+      "Sawah Tadah Hujan": "Area yang tercatat sebagai sawah tadah hujan.",
+      "Tegalan/Ladang": "Area yang tercatat sebagai lahan pertanian kering atau ladang.",
+    };
     const rows = report.classes
       .map(function (item) {
         return (
           '<div class="spk-data-row">' +
-          '<span class="spk-data-cell spk-data-cell--primary"><span class="spk-color-dot" style="background:' +
-          escapeHtml(item.color) +
-          '"></span>' +
+          '<span class="spk-data-cell spk-data-cell--primary">' +
           escapeHtml(item.className) +
-          "</span>" +
-          '<span class="spk-data-cell">' +
-          escapeHtml(item.groupLabel) +
-          "</span>" +
+          '<small class="spk-land-use-description">' +
+          escapeHtml(descriptions[item.className] || ("Area yang tercatat sebagai " + item.className + " dalam data penggunaan lahan.")) +
+          "</small></span>" +
           '<span class="spk-data-cell spk-data-cell--num">' +
           escapeHtml(LandUse.formatPercent(item.percentOfPolygon)) +
           "</span>" +
@@ -1024,43 +1056,39 @@
       .join("");
     return (
       '<section class="spk-section spk-spatial-section">' +
-      '<div class="spk-section-head"><div><p class="panel-eyebrow">Informasi penggunaan lahan</p><h3>Penggunaan Lahan di Area yang Dianalisis</h3><p>' +
-      escapeHtml(report.summaryText) +
-      "</p></div></div>" +
+      '<div class="spk-section-head"><div><p class="panel-eyebrow">Informasi dari data yang tersedia</p><h3>Penggunaan Lahan di Lokasi Ini</h3><p>Informasi mengenai jenis penggunaan atau tutupan lahan yang ditemukan pada area yang sedang diperiksa.</p></div></div>' +
       '<div class="spk-spatial-meta">' +
-      '<span>Cakupan: <b>' +
-      escapeHtml(LandUse.formatPercent(report.coveragePercent)) +
-      "</b></span>" +
-      '<span>Luas terpetakan: <b>' +
+      '<span>Total luas dengan informasi: <b>' +
       escapeHtml(LandUse.formatArea(report.coveredAreaM2)) +
       "</b></span>" +
-      '<span>Luas poligon: <b>' +
+      '<span>Area yang diperiksa: <b>' +
       escapeHtml(LandUse.formatArea(report.polygonAreaM2)) +
       "</b></span>" +
+      '<span>Area tanpa informasi: <b>' + escapeHtml(LandUse.formatArea(report.uncoveredAreaM2)) + "</b></span>" +
+      '<span>Proporsi area: <b>' + escapeHtml(LandUse.formatPercent(report.coveragePercent)) + "</b></span>" +
       "</div>" +
       (rows
-        ? '<div class="spk-data-table"><div class="spk-data-row spk-data-row--head"><span class="spk-data-cell">Kelas sumber</span><span class="spk-data-cell">Kelompok</span><span class="spk-data-cell spk-data-cell--num">% poligon</span><span class="spk-data-cell spk-data-cell--num">Luas</span></div>' +
+        ? '<div class="spk-data-table"><div class="spk-data-row spk-data-row--head"><span class="spk-data-cell">Jenis penggunaan lahan</span><span class="spk-data-cell spk-data-cell--num">Proporsi area</span><span class="spk-data-cell spk-data-cell--num">Luas</span></div>' +
           rows +
           "</div>"
-        : '<div class="spk-inline-empty">Tidak ada kelas guna lahan pada area yang tercakup. Ini bukan bukti bahwa area tidak memiliki penggunaan lahan.</div>') +
+        : '<div class="spk-inline-empty">Data penggunaan lahan belum tersedia untuk area ini. Area tanpa data tidak dapat dianggap kosong atau bebas pembatasan.</div>') +
       (report.warnings.length
         ? '<div class="spk-warning-list">' +
           report.warnings
             .map(function (warning) {
-              return "<span>" + escapeHtml(warning) + "</span>";
+              const simpleWarning = /tumpang tindih/i.test(warning)
+                ? "Sebagian data saling tumpang tindih. Total luas area tercakup dihitung satu kali; proporsi per kategori dapat saling bertumpuk."
+                : warning;
+              return "<span>" + escapeHtml(simpleWarning) + "</span>";
             })
             .join("") +
           "</div>"
         : "") +
-      '<div class="spk-disclaimer"><b>Status data:</b> ' +
-      escapeHtml(
-        report.dataset && report.dataset.verificationStatus === "source_metadata_incomplete"
-          ? "Metadata sumber belum lengkap. Kelas guna lahan bukan penetapan status hukum."
-          : "Kelas guna lahan bersifat informatif dan bukan penetapan status hukum."
-      ) +
-      (report.dataset && report.dataset.localFile
-        ? ' Sumber lokal: <span class="mono">' + escapeHtml(report.dataset.localFile) + "</span>."
+      (report.overlapAreaM2 > 0 && !report.warnings.some(function (warning) { return /tumpang tindih/i.test(warning); })
+        ? '<div class="spk-inline-note">Sebagian poligon data saling tumpang tindih (' + escapeHtml(LandUse.formatArea(report.overlapAreaM2)) + '). Luas total yang tercakup dihitung tanpa menghitung bagian tumpang tindih dua kali; proporsi kategori dapat saling bertumpuk.</div>'
         : "") +
+      '<div class="spk-disclaimer">Informasi ini mengikuti kategori pada data penggunaan lahan yang tersedia. Label tersebut tidak otomatis menunjukkan batas resmi kawasan lindung atau zonasi hukum.</div>' +
+      '<div class="spk-inline-note">Data penggunaan lahan yang tersedia belum mencakup seluruh wilayah DIY. Hasil analisis hanya menggambarkan area yang masuk dalam cakupan data.</div>' +
       "</div></section>"
     );
   }
@@ -1075,25 +1103,14 @@
           escapeHtml(item.severity) +
           '">' +
           '<div class="spk-constraint-head"><div><div class="spk-constraint-title">' +
-          escapeHtml(item.label) +
-          '</div><div class="spk-criterion-meta"><span>' +
-          escapeHtml(item.categoryLabel) +
-          "</span><span>Kelas sumber: " +
-          escapeHtml(item.sourceClass || "-") +
-          '</span></div></div><span class="spk-status spk-status--caution">' +
-          escapeHtml(item.statusLabel) +
-          "</span></div>" +
-          '<div class="spk-constraint-meta">' +
-          escapeHtml(item.message) +
-          "</div>" +
+          escapeHtml(item.sourceClass || item.label) +
+          '</div><div class="spk-criterion-meta"><span>Tercatat pada data penggunaan lahan</span></div></div></div>' +
           '<div class="spk-spatial-meta"><span>Luas irisan: <b>' +
           escapeHtml(SensitiveAreas.formatArea(item.areaM2)) +
           "</b></span><span>Persentase poligon: <b>" +
           escapeHtml(SensitiveAreas.formatPercent(item.percentOfPolygon)) +
           "</b></span></div>" +
-          '<div class="spk-criterion-actual">' +
-          escapeHtml(item.verification) +
-          "</div></div>"
+          "</div>"
         );
       })
       .join("");
@@ -1110,9 +1127,8 @@
         '<div class="spk-inline-empty">' +
           escapeHtml(summary.note || "Objek dan kawasan sensitif belum teridentifikasi.") +
           "</div>") +
-      '<div class="spk-disclaimer"><b>Bukan status hukum:</b> ' +
-      escapeHtml(report.verificationText) +
-      "</div></section>"
+      (cards ? '<div class="spk-disclaimer">Kategori mengikuti label data penggunaan lahan dan tidak otomatis menunjukkan batas resmi atau penetapan hukum.</div>' : "") +
+      "</section>"
     );
   }
 
@@ -1172,62 +1188,12 @@
   function renderConstraintsTab(assessment) {
     const constraints = assessment.constraints;
     if (!constraints) return '<div class="spk-alert spk-alert--warn">Pembatas spasial belum dievaluasi.</div>';
-    const summary = constraints.summary;
-    const landUse = LandUse.normalize(assessment.landUse);
     const sensitive = SensitiveAreas.normalize(assessment.sensitiveAreas);
-    const legalItems = constraints.items.filter(function (item) { return item.category === "legal"; });
-    const technicalItems = constraints.items.filter(function (item) { return item.category !== "legal"; });
-    const legalStatus = summary.hasBindingRestriction
-      ? "restricted_verified"
-      : summary.hasUnknownBindingConstraints
-      ? "not_evaluated"
-      : "not_detected";
-    const legalPresentation = constraintPresentation({ status: legalStatus });
     return (
       '<div class="spk-section">' +
-      '<div class="spk-spatial-summary">' +
-      '<div class="spk-spatial-summary-card"><span>Guna lahan</span><b>' +
-      escapeHtml(landUse.statusLabel) +
-      "</b><small>" +
-      escapeHtml(landUse.summaryText) +
-      "</small></div>" +
-      '<div class="spk-spatial-summary-card"><span>Objek / kawasan</span><b>' +
-      escapeHtml(sensitive.summary.statusLabel) +
-      "</b><small>" +
-      escapeHtml(sensitive.summaryText) +
-      "</small></div>" +
-      '<div class="spk-spatial-summary-card"><span>Pembatas legal</span><b>' +
-      escapeHtml(legalPresentation.label) +
-      "</b><small>" +
-      escapeHtml(
-        summary.notEvaluated
-          ? summary.notEvaluated + " pembatas legal belum dapat diverifikasi."
-          : "Tidak ada pembatas legal terverifikasi pada data tersedia; ini bukan pembebasan."
-      ) +
-      "</small></div>" +
-      "</div>" +
       renderLandUseSection(assessment) +
-      renderSensitiveSection(assessment) +
-      '<section class="spk-section spk-spatial-section">' +
-      '<div class="spk-section-head"><div><p class="panel-eyebrow">Verifikasi aturan</p><h3>Verifikasi Aturan dan Pembatas Lahan</h3><p>Status ini tidak dapat disimpulkan sebagai bebas pembatas.</p></div></div>' +
-      '<div class="spk-alert spk-alert--error"><span class="spk-alert-title">Pembatas legal belum terverifikasi</span><span class="spk-alert-text">' +
-      escapeHtml(summary.note) +
-      " WLC yang baik tidak dapat mengalahkan pembatas hukum/spasial yang mengikat.</span></div>" +
-      '<div class="spk-constraint-list">' +
-      legalItems.map(renderConstraintCard).join("") +
-      "</div>" +
-      (technicalItems.length
-        ? '<div class="spk-subsection"><h4>Indikator teknis dan model</h4><p class="spk-section-desc">Indikator berikut bukan pembatas hukum dan tidak boleh dibaca sebagai penetapan resmi.</p><div class="spk-constraint-list">' +
-          technicalItems.map(renderConstraintCard).join("") +
-          "</div></div>"
-        : "") +
-      '<div class="spk-disclaimer"><b>Status belum dievaluasi bukan berarti tidak ada batasan.</b> ' +
-      escapeHtml(
-        Engine
-          ? "Evaluasi ini tidak dapat menyimpulkan kelayakan legal. Verifikasi ke instansi berwenang tetap diperlukan."
-          : ""
-      ) +
-      "</div></section></div>"
+      (sensitive.items.length ? renderSensitiveSection(assessment) : "") +
+      '<div class="spk-disclaimer">Data batas resmi kawasan perlindungan dan tata ruang belum tersedia untuk diperiksa dalam aplikasi ini. Hasil ini tidak menyimpulkan bahwa lokasi bebas dari pembatasan hukum.</div></div>'
     );
   }
 
@@ -1267,7 +1233,7 @@
           ? assessment.recommendations.summary.title + ". " + assessment.recommendations.summary.nextStep
           : "Rekomendasi belum tersedia."
       ) +
-      "</p><p><b>Rekomendasi sistem bukan keputusan akhir.</b> Pengguna dapat menerima, menolak, atau meminta kajian tambahan dengan alasan yang tercatat.</p></div>" +
+      "</p><p>Rekomendasi sistem merupakan bahan pertimbangan. Keputusan akhir tetap berada pada pihak yang berwenang.</p></div>" +
       (saved
         ? '<div class="spk-alert spk-alert--success"><span class="spk-alert-title">Keputusan tersimpan lokal</span><span class="spk-alert-text">' +
           escapeHtml(saved.reviewId) +
@@ -1279,11 +1245,11 @@
       '<form class="spk-form" id="spk-decision-form">' +
       '<div class="spk-form-grid">' +
       field("Nama peninjau", '<input id="spk-reviewer" name="reviewer" type="text" autocomplete="name" value="' + escapeHtml(form.reviewer) + '" placeholder="Nama / peran" required>') +
-      field("Tanggal keputusan", '<input id="spk-decision-date" name="decidedAt" type="date" value="' + escapeHtml(form.decidedAt) + '">') +
+      field("Tanggal pemeriksaan", '<input id="spk-decision-date" name="decidedAt" type="date" value="' + escapeHtml(form.decidedAt) + '">') +
       "</div>" +
-      field("Status keputusan", '<select id="spk-decision-status" name="status">' + statusOptions + "</select>") +
-      field("Alasan / pertimbangan", '<textarea id="spk-rationale" name="rationale" placeholder="Jelaskan dasar keputusan, termasuk perbedaan dengan rekomendasi sistem bila ada.">' + escapeHtml(form.rationale) + "</textarea>") +
-      field("Catatan tambahan", '<textarea id="spk-notes" name="notes" placeholder="Tindak lanjut, syarat, atau kebutuhan verifikasi.">' + escapeHtml(form.notes) + "</textarea>") +
+      field("Keputusan", '<select id="spk-decision-status" name="status">' + statusOptions + "</select>") +
+      field("Alasan keputusan", '<textarea id="spk-rationale" name="rationale" placeholder="Jelaskan alasan keputusan dan hal yang menjadi pertimbangan.">' + escapeHtml(form.rationale) + "</textarea>") +
+      field("Catatan tambahan", '<textarea id="spk-notes" name="notes" placeholder="Tuliskan tindak lanjut atau pemeriksaan yang masih diperlukan.">' + escapeHtml(form.notes) + "</textarea>") +
       '<div class="spk-field-help">Nama peninjau wajib diisi. Alasan wajib untuk keputusan selain “Belum diputuskan”.</div>' +
       '<div class="spk-actions">' +
       '<button type="button" class="btn btn-primary" id="spk-save-decision">Simpan keputusan</button>' +
