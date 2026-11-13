@@ -86,12 +86,7 @@
 
   map.createPane("spkLandUsePane");
   map.getPane("spkLandUsePane").style.zIndex = 430;
-  map.createPane("spkSensitivePane");
-  map.getPane("spkSensitivePane").style.zIndex = 440;
-  map.createPane("spkLegalPane");
-  map.getPane("spkLegalPane").style.zIndex = 450;
   const spkLandUseRenderer = L.svg({ pane: "spkLandUsePane", padding: 0.5 });
-  const spkSensitiveRenderer = L.svg({ pane: "spkSensitivePane", padding: 0.5 });
 
   L.control.zoom({ position: "topright" }).addTo(map);
   L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
@@ -158,10 +153,7 @@
     kavlingOutlineGroup: L.layerGroup().addTo(map),
     segmentLayersById: {},
     spkLandUseGroup: L.layerGroup(),
-    spkSensitiveGroup: L.layerGroup(),
-    spkLegalGroup: L.layerGroup(),
     spkLandUseReport: null,
-    spkSensitiveReport: null,
     spkAssessment: null,
     spkLegendBefore: null,
     spkSpatialLegendBefore: null,
@@ -2118,37 +2110,23 @@
   }
 
   function clearSpkSpatialLayers() {
-    [
-      state.spkLandUseGroup,
-      state.spkSensitiveGroup,
-      state.spkLegalGroup,
-    ].forEach((group) => {
-      if (!group) return;
-      group.clearLayers();
-      if (map.hasLayer(group)) map.removeLayer(group);
-    });
+    state.spkLandUseGroup.clearLayers();
+    if (map.hasLayer(state.spkLandUseGroup)) map.removeLayer(state.spkLandUseGroup);
     state.spkLandUseReport = null;
-    state.spkSensitiveReport = null;
-    if (
-      state.activeLegendMode === "spk-land-use" ||
-      state.activeLegendMode === "spk-sensitive"
-    ) {
+    if (state.activeLegendMode === "spk-land-use") {
       state.activeLegendMode =
         state.spkSpatialLegendBefore || (state.spkAssessment ? "spk" : "triase");
       state.spkSpatialLegendBefore = null;
       updateLegend();
     }
     setSpkLayerControlState("landUse", false, "Tersedia setelah analisis kavling.");
-    setSpkLayerControlState("sensitive", false, "Tersedia setelah analisis kavling.");
-    setSpkLayerControlState("legal", false, "Dataset pembatas legal resmi belum tersedia.");
   }
 
   function renderSpkSpatialLayers(data) {
     clearSpkSpatialLayers();
     if (!data) return;
     const landUseApi = window.LahanAmanLandUse;
-    const sensitiveApi = window.LahanAmanSensitiveAreas;
-    if (!landUseApi || !sensitiveApi) return;
+    if (!landUseApi) return;
 
     const landUse = landUseApi.normalize(data.land_use);
     state.spkLandUseReport = landUse;
@@ -2176,56 +2154,19 @@
       hasLandUse,
       "Tidak ada geometri guna lahan pada area analisis."
     );
-
-    const sensitive = sensitiveApi.normalize(data.sensitive_areas);
-    state.spkSensitiveReport = sensitive;
-    sensitive.features.forEach((feature) => {
-      if (!feature.geometry) return;
-      const layer = L.geoJSON(feature.geometry, {
-        pane: "spkSensitivePane",
-        renderer: spkSensitiveRenderer,
-        style: () => sensitiveApi.styleForFeature(feature, 0.2),
-      });
-      const tooltip =
-        "<b>" +
-        feature.label +
-        "</b><br>" +
-        (feature.sourceClass || "-") +
-        " · indikasi";
-      layer.bindTooltip(tooltip, { sticky: true });
-      state.spkSensitiveGroup.addLayer(layer);
-    });
-    const hasSensitive = sensitive.features.length > 0;
-    setSpkLayerControlState(
-      "sensitive",
-      hasSensitive,
-      "Tidak ada objek/kawasan sensitif pada data tersedia."
-    );
-    setSpkLayerControlState("legal", false, "Dataset pembatas legal resmi belum tersedia.");
   }
 
   function toggleSpkLayer(key, checked) {
-    const mapByKey = {
-      landUse: state.spkLandUseGroup,
-      sensitive: state.spkSensitiveGroup,
-      legal: state.spkLegalGroup,
-    };
-    const group = mapByKey[key];
+    if (key !== "landUse") return;
+    const group = state.spkLandUseGroup;
     if (!group) return;
     const card = document.querySelector('[data-spk-layer-card="' + key + '"]');
-    const legendByKey = {
-      landUse: "spk-land-use",
-      sensitive: "spk-sensitive",
-    };
-    const legendMode = legendByKey[key];
+    const legendMode = "spk-land-use";
     if (checked && group.getLayers().length) {
       group.addTo(map);
       if (card) card.classList.add("is-active");
       if (legendMode) {
-        if (
-          state.activeLegendMode !== "spk-land-use" &&
-          state.activeLegendMode !== "spk-sensitive"
-        ) {
+        if (state.activeLegendMode !== "spk-land-use") {
           state.spkSpatialLegendBefore = state.activeLegendMode;
         }
         state.activeLegendMode = legendMode;
@@ -2235,16 +2176,11 @@
       if (map.hasLayer(group)) map.removeLayer(group);
       if (card) card.classList.remove("is-active");
       if (checked) {
-        const checkbox = document.getElementById("chk-spk-" + (key === "landUse" ? "land-use" : key));
+        const checkbox = document.getElementById("chk-spk-land-use");
         if (checkbox) checkbox.checked = false;
       }
       if (legendMode && state.activeLegendMode === legendMode) {
-        const otherKey = key === "landUse" ? "sensitive" : "landUse";
-        const otherGroup = mapByKey[otherKey];
-        const otherLegend = legendByKey[otherKey];
-        if (otherGroup && otherLegend && map.hasLayer(otherGroup) && otherGroup.getLayers().length) {
-          state.activeLegendMode = otherLegend;
-        } else if (state.spkSpatialLegendBefore) {
+        if (state.spkSpatialLegendBefore) {
           state.activeLegendMode = state.spkSpatialLegendBefore;
           state.spkSpatialLegendBefore = null;
         } else {
@@ -2289,7 +2225,7 @@
     if (!state.spkLegendBefore) {
       const previous = state.activeLegendMode;
       state.spkLegendBefore =
-        previous === "spk" || previous === "spk-land-use" || previous === "spk-sensitive"
+        previous === "spk" || previous === "spk-land-use"
           ? "triase"
           : previous;
     }
@@ -2534,7 +2470,7 @@
           <span class="kavling-area-label">Luas poligon kavling</span>
           <div class="kavling-area-value">${formatAngka(luasPoligon, 1)} <small>m�</small></div>
           <div class="kavling-area-sub">
-            � ${formatAngka(luasPoligon / 10000, 3)} ha � ${features.length} segmen spasial � cakupan data ${cakupanLabel}%
+            � ${formatAngka(luasPoligon / 10000, 3)} ha � ${features.length} segmen spasial � cakupan data penilaian SPK ${cakupanLabel}%
           </div>
           <div class="kavling-coverage-note ${cakupanRendah ? "is-low" : ""}">
             ${cakupanRendah ? "Sebagian poligon tidak tercakup layer kerawanan. Area yang tidak tercakup tidak boleh dianggap aman." : "Cakupan layer kerawanan memadai untuk evaluasi awal."}
@@ -2615,7 +2551,7 @@
         <div>
           <span class="kavling-spk-cta-eyebrow">Spatial decision support</span>
           <b>Analisis SPK</b>
-          <p>Uji bobot WLC, baca FS terpisah, cek pembatas, dan catat keputusan pengguna.</p>
+          <p>Uji bobot WLC, tinjau kestabilan lereng dan penggunaan lahan, lalu catat keputusan.</p>
         </div>
         <button type="button" class="btn btn-primary" id="btn-open-spk-panel">
           <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>Buka SPK
@@ -2767,7 +2703,7 @@
 
     if (state.activeLegendMode === "spk-land-use") {
       const report = state.spkLandUseReport;
-      const classes = report ? report.classes.slice(0, 5) : [];
+      const classes = report ? report.classes : [];
       const landUseApi = window.LahanAmanLandUse;
       const rows = classes
         .map((item) => {
@@ -2782,37 +2718,9 @@
           `;
         })
         .join("");
-      const remaining = report && report.classes.length > classes.length
-        ? `<div class="legend-note">${report.classes.length - classes.length} kelas lain tersedia pada tabel analisis.</div>`
-        : "";
       el.innerHTML = `
-        <div class="legend-title">Guna lahan - informasi sumber</div>
+        <div class="legend-title">Penggunaan lahan di lokasi ini</div>
         ${rows || '<div class="legend-note">Tidak ada kelas guna lahan pada area analisis.</div>'}
-        ${remaining}
-        <div class="legend-note">Warna mengikuti atribut sumber. Kelas guna lahan bukan status hukum.</div>
-      `;
-      return;
-    }
-
-    if (state.activeLegendMode === "spk-sensitive") {
-      const report = state.spkSensitiveReport;
-      const items = report ? report.items.slice(0, 5) : [];
-      const rows = items
-        .map((item) => `
-          <div class="legend-row">
-            <span class="legend-swatch" style="background:${item.color};border:2px dashed #0f172a;"></span>
-            <span><b>${escapeLegendText(item.label)}</b> - indikasi</span>
-          </div>
-        `)
-        .join("");
-      const remaining = report && report.items.length > items.length
-        ? `<div class="legend-note">${report.items.length - items.length} objek/kawasan lain tersedia pada tabel analisis.</div>`
-        : "";
-      el.innerHTML = `
-        <div class="legend-title">Objek dan kawasan sensitif - indikasi</div>
-        ${rows || '<div class="legend-note">Tidak ada objek/kawasan sensitif teridentifikasi.</div>'}
-        ${remaining}
-        <div class="legend-note">Garis putus-putus pada peta menandai indikasi. Status dan batas resmi belum diverifikasi.</div>
       `;
       return;
     }
@@ -3823,7 +3731,6 @@
         summary: summary,
         polygonAreaM2: polygonAreaM2,
         landUse: state.activeKavlingResult.land_use || null,
-        sensitiveAreas: state.activeKavlingResult.sensitive_areas || null,
         crs: "EPSG:4326",
       };
     },

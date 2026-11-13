@@ -122,6 +122,7 @@
     const createdAt = new Date().toISOString();
     return {
       schema: "lahanaman.spk.review/v1",
+      formatVersion: 2,
       reviewId: makeId("REV"),
       createdAt: createdAt,
       updatedAt: createdAt,
@@ -158,6 +159,7 @@
       recommendationsSummary: assessment.recommendations
         ? clone(assessment.recommendations.summary)
         : null,
+      systemInterpretation: assessment.interpretation ? clone(assessment.interpretation) : null,
       humanDecision: {
         status: decision.status,
         reviewer: String(decision.reviewer || "").trim(),
@@ -171,7 +173,7 @@
       },
       assessment: compactAssessment(assessment),
       storageNote:
-        "Draf lokal browser. Bukan basis data terpusat, bukan keputusan resmi, dan tidak menjamin autentikasi.",
+        "Catatan disimpan secara lokal di browser perangkat ini, bukan basis data terpusat; bukan izin pembangunan atau sertifikat keamanan lahan.",
     };
   }
 

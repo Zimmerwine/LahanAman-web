@@ -59,6 +59,11 @@ test("review records preserve decision, assessment snapshot and audit fields", (
   assessment.recommendations = {
     summary: { title: "Belum ada skenario yang dapat diutamakan" },
   };
+  assessment.interpretation = {
+    schema: "lahanaman.spk.interpretation/v1",
+    status: { code: "belum_dapat_disimpulkan", label: "Belum Dapat Disimpulkan" },
+    actions: [{ id: "complete-data", status: "disarankan" }],
+  };
 
   const result = Store.saveReview(assessment, {
     status: "accepted_with_conditions",
@@ -75,7 +80,9 @@ test("review records preserve decision, assessment snapshot and audit fields", (
   assert.equal(result.record.assessmentId, "SPK-STORE-1");
   assert.equal(result.record.assessment.active.profile, "standard");
   assert.equal(result.record.constraintsSummary.hasUnknownBindingConstraints, true);
-  assert.match(result.record.storageNote, /Bukan basis data terpusat/);
+  assert.equal(result.record.formatVersion, 2);
+  assert.equal(result.record.systemInterpretation.status.code, "belum_dapat_disimpulkan");
+  assert.match(result.record.storageNote, /bukan basis data terpusat/i);
 
   const listed = Store.listReviews();
   assert.equal(listed.length, 1);

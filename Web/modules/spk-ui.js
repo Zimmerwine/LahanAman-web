@@ -6,15 +6,17 @@
   const Recommendation = root.LahanAmanSPKRecommendation;
   const Store = root.LahanAmanSPKStore;
   const LandUse = root.LahanAmanLandUse;
-  const SensitiveAreas = root.LahanAmanSensitiveAreas;
+  const Interpretation = root.LahanAmanSPKInterpretation;
 
   const TABS = [
     { id: "summary", label: "Ringkasan SPK" },
     { id: "criteria", label: "Analisis Kriteria" },
     { id: "slope", label: "Kestabilan Lereng (FS)" },
     { id: "development", label: "Alternatif Pengembangan" },
-    { id: "constraints", label: "Penggunaan Lahan dan Informasi" },
+    { id: "constraints", label: "Penggunaan Lahan" },
+    { id: "conclusion", label: "Kesimpulan dan Tindak Lanjut" },
     { id: "decision", label: "Keputusan Pengguna" },
+    { id: "final", label: "Hasil Akhir Pemeriksaan" },
   ];
 
   const state = {
@@ -46,6 +48,24 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function isLegalReference(value) {
+    return /RTRW|RDTR|sempadan|legal|pembatas|status hukum|batas resmi|kawasan lindung|penetapan hukum|instansi berwenang|objek sensitif/i.test(String(value || ""));
+  }
+
+  function recommendationCopy(summary) {
+    const note = isLegalReference(summary.note)
+      ? "Belum ada alternatif yang dapat diprioritaskan karena data dan pemeriksaan lanjutan masih diperlukan."
+      : summary.note;
+    const nextStep = isLegalReference(summary.nextStep)
+      ? "Lengkapi data dan lakukan pemeriksaan teknis sebelum memilih alternatif."
+      : summary.nextStep;
+    return { note: note, nextStep: nextStep };
+  }
+
+  function visibleRecommendationItems(items) {
+    return (items || []).filter(function (item) { return !isLegalReference(item); });
   }
 
   function fmt(value, digits) {
@@ -103,7 +123,7 @@
   function init() {
     if (initialized) return;
     if (!root.document) return;
-    if (!Engine || !Constraints || !Recommendation || !Store || !LandUse || !SensitiveAreas) {
+    if (!Engine || !Constraints || !Recommendation || !Store || !LandUse || !Interpretation) {
       console.error("[SPK] Modul SPK tidak lengkap.");
       return;
     }
@@ -220,28 +240,33 @@
   function renderProgress() {
     if (!els.progress) return;
     const results = state.view === "results" && state.assessment;
-    const decision = results && state.activeTab === "decision";
+    const activeIndex = !results
+      ? 0
+      : state.activeTab === "conclusion"
+      ? 2
+      : state.activeTab === "decision"
+      ? 3
+      : state.activeTab === "final"
+      ? 4
+      : 1;
     const steps = [
-      { label: "Parameter", status: "done" },
-      {
-        label: "Evaluasi",
-        status: results ? (decision ? "done" : "active") : "active",
-      },
-      {
-        label: "Keputusan",
-        status: decision ? "active" : results ? "pending" : "pending",
-      },
+      "Parameter",
+      "Evaluasi",
+      "Kesimpulan",
+      "Keputusan",
+      "Hasil Akhir",
     ];
     els.progress.innerHTML = steps
-      .map(function (step, index) {
+      .map(function (label, index) {
+        const status = index < activeIndex ? "done" : index === activeIndex ? "active" : "pending";
         return (
           '<span class="spk-progress-step ' +
-          (step.status === "active" ? "is-active " : "") +
-          (step.status === "done" ? "is-done" : "") +
+          (status === "active" ? "is-active " : "") +
+          (status === "done" ? "is-done" : "") +
           '"><b>' +
-          (step.status === "done" ? "✓" : String(index + 1)) +
+          (status === "done" ? "✓" : String(index + 1)) +
           "</b>" +
-          escapeHtml(step.label) +
+          escapeHtml(label) +
           "</span>"
         );
       })
@@ -296,7 +321,7 @@
 
     const coverageWarning =
       Number(coverage) < 80
-        ? '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Cakupan data terbatas</span><span class="spk-alert-text">Hanya ' +
+        ? '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Cakupan data penilaian SPK terbatas</span><span class="spk-alert-text">Hanya ' +
           fmtPercent(coverage) +
           " luas area yang diperiksa memiliki data penilaian. Bagian tanpa data tidak boleh dianggap aman.</span></div>"
         : "";
@@ -325,7 +350,7 @@
       " bagian</p></div></div>" +
       '<div class="spk-location-grid">' +
       metric("Luas poligon", fmtArea(area), "Batas poligon yang dievaluasi") +
-      metric("Cakupan data", coverage != null ? fmtPercent(coverage) : "-", fmtArea(summary.total_luas_m2) + " memiliki data") +
+      metric("Cakupan data penilaian SPK", coverage != null ? fmtPercent(coverage) : "-", "Persentase area yang memiliki data untuk penilaian kerawanan longsor.") +
       metric("Bagian area", String((ctx.segments || []).length), "Bagian yang dianalisis") +
       "</div></div></section>" +
       coverageWarning +
@@ -344,7 +369,7 @@
       (active ? '<button type="button" class="btn btn-secondary" id="spk-view-last">Lihat hasil terakhir</button>' : "") +
       '<button type="button" class="btn btn-secondary" id="spk-config-cancel">Tutup</button>' +
       "</div>" +
-      '<p class="spk-inline-note">Ini merupakan pemeriksaan awal berdasarkan data yang tersedia. Informasi batas resmi kawasan dan tata ruang belum tersedia untuk diperiksa.</p>' +
+      '<p class="spk-inline-note">Ini merupakan pemeriksaan awal berdasarkan data yang tersedia. Area yang tidak memiliki data belum dapat dinilai.</p>' +
       "</section>";
 
     bindConfigEvents();
@@ -542,11 +567,11 @@
         summary: ctx.summary,
         config: config,
         landUse: ctx.landUse || null,
-        sensitiveAreas: ctx.sensitiveAreas || null,
       });
       const constraintResult = Constraints.evaluateConstraints(assessment);
       assessment.constraints = constraintResult;
       assessment.recommendations = Recommendation.evaluateRecommendations(assessment, constraintResult);
+      assessment.interpretation = Interpretation.build(assessment);
       state.assessment = assessment;
       state.appliedConfig = clone(assessment.config);
       state.profile = assessment.config.profile;
@@ -598,30 +623,22 @@
     const standardClass = assessment.standard.classification
       ? assessment.standard.classification.label
       : "Tidak tersedia";
-    const warnings = assessment.dataCompleteness.warnings || [];
-    const legalUnknown =
-      assessment.constraints &&
-      assessment.constraints.summary &&
-      assessment.constraints.summary.hasUnknownBindingConstraints;
+    const warnings = (assessment.dataCompleteness.warnings || []).filter(function (warning) {
+      return !(custom && /indeks kustom belum dikalibrasi/i.test(String(warning || "")));
+    });
     const alerts = [];
     if (custom) {
       alerts.push(
-        '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Bobot pilihan belum diuji sebagai standar</span><span class="spk-alert-text">Hasil ini tidak memakai pembagian tingkat kerawanan standar. Gunakan hasil standar penelitian sebagai pembanding.</span></div>'
+        '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Bobot Pilihan Belum Terkalibrasi</span><span class="spk-alert-text">Bobot yang Anda pilih belum diuji sebagai standar penelitian. Hasil ini tidak menggunakan pembagian tingkat kerawanan standar. Gunakan hasil dengan bobot standar penelitian sebagai pembanding.</span></div>'
       );
     }
     warnings.slice(0, 2).forEach(function (warning) {
       alerts.push(
         '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Perhatian data</span><span class="spk-alert-text">' +
-          escapeHtml(warning) +
+          escapeHtml(warning.replace(/^Cakupan data hanya\s+/i, "Cakupan data penilaian SPK hanya ")) +
           "</span></div>"
       );
     });
-    if (legalUnknown) {
-      alerts.push(
-      '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Batas resmi belum tersedia</span><span class="spk-alert-text">Data tata ruang dan batas resmi kawasan perlindungan belum tersedia untuk diperiksa. Hasil analisis bukan izin pembangunan.</span></div>'
-      );
-    }
-
     return (
       '<section class="spk-section"><div class="spk-result-head">' +
       '<div class="spk-result-title-row"><div><p class="panel-eyebrow">Hasil evaluasi</p><h3>' +
@@ -638,7 +655,7 @@
       scoreCard(custom ? "Nilai dengan bobot pilihan" : "Nilai penilaian", fmt(active.score, 2), activeClass, true) +
       scoreCard("Nilai standar penelitian", fmt(assessment.standard.score, 2), standardClass, false) +
       scoreCard("Kestabilan lereng terendah (FS)", fsMin != null ? fmt(fsMin, 2) : "-", "Dihitung terpisah", false) +
-      scoreCard("Cakupan data", coverage != null ? fmtPercent(coverage * 100) : "-", fmtArea(assessment.location.coveredAreaM2), false) +
+      scoreCard("Cakupan data penilaian SPK", coverage != null ? fmtPercent(coverage * 100) : "-", "Persentase area yang memiliki data untuk penilaian kerawanan longsor.", false) +
       "</div>" +
       alerts.join("") +
       "</div></section>"
@@ -660,9 +677,12 @@
   }
 
   function renderTabs() {
+    const visibleTabs = TABS.filter(function (tab) {
+      return tab.id !== "final" || Boolean(state.savedRecord);
+    });
     return (
       '<div class="spk-tabs" role="tablist" aria-label="Bagian hasil SPK">' +
-      TABS.map(function (tab) {
+      visibleTabs.map(function (tab) {
         return (
           '<button type="button" class="spk-tab ' +
           (state.activeTab === tab.id ? "is-active" : "") +
@@ -689,11 +709,20 @@
         return renderDevelopmentTab(assessment);
       case "constraints":
         return renderConstraintsTab(assessment);
+      case "conclusion":
+        return renderConclusionTab(assessment);
       case "decision":
         return renderDecisionTab(assessment);
+      case "final":
+        return renderFinalTab(assessment);
       default:
         return renderSummaryTab(assessment);
     }
+  }
+
+  function getInterpretation(assessment) {
+    if (!assessment.interpretation) assessment.interpretation = Interpretation.build(assessment);
+    return assessment.interpretation;
   }
 
   function renderSummaryTab(assessment) {
@@ -754,7 +783,9 @@
       assessment.metadata.datasetRefs.map(function (source) { return "<code>" + escapeHtml(source) + "</code>"; }).join("") +
       "</div>" +
       '<div class="spk-disclaimer"><b>Batasan:</b> ' +
-      escapeHtml(assessment.metadata.limitations.join(" ")) +
+      escapeHtml(assessment.metadata.limitations.filter(function (item) {
+        return !isLegalReference(item) && !(custom && /bobot kustom belum dikalibrasi/i.test(String(item || "")));
+      }).join(" ")) +
       "</div></details></div>"
     );
   }
@@ -869,9 +900,10 @@
 
   function formatActual(key, value) {
     if (value == null) return "-";
-    if (key === "slope") return "Kemiringan aktual: " + fmt(value, 2) + " derajat.";
+    if (key === "slope") return "Kemiringan aktual: " + fmt(value, 2) + "°.";
     if (key === "rainfall") return "Curah hujan aktual: " + fmt(value, 0) + " mm/tahun.";
-    return "Nilai dominan: " + String(value) + ".";
+    if (typeof value === "number" && Number.isFinite(value)) return "Nilai aktual: " + fmt(value, 2) + ".";
+    return "Nilai dari data: " + String(value) + ".";
   }
 
   function criterionExplanation(key) {
@@ -931,6 +963,8 @@
     const rec = assessment.recommendations;
     if (!rec) return '<div class="spk-alert spk-alert--warn">Rekomendasi belum tersedia.</div>';
     const summary = rec.summary;
+    const copy = recommendationCopy(summary);
+    const interpretation = getInterpretation(assessment);
     const tone = summary.status === "perlu_perhatian_tinggi" ? "error" : "info";
     return (
       '<div class="spk-section">' +
@@ -939,14 +973,18 @@
       '"><span class="spk-alert-title">' +
       escapeHtml(summary.title) +
       '</span><span class="spk-alert-text">' +
-      escapeHtml(summary.note) +
+      escapeHtml(copy.note) +
       " <b>Langkah berikutnya:</b> " +
-      escapeHtml(summary.nextStep) +
+      escapeHtml(copy.nextStep) +
       "</span></div>" +
       '<div class="spk-alert spk-alert--warn"><span class="spk-alert-title">Bukan desain teknis</span><span class="spk-alert-text">Tidak ada volume cut/fill, dimensi fondasi, atau desain teknis yang dihitung. Semua opsi memerlukan penilaian ahli dan verifikasi lapangan.</span></div>' +
+      '<div class="spk-decision-summary"><h4>Mengapa belum ada alternatif yang dapat diprioritaskan?</h4><p>' +
+      escapeHtml(interpretation.alternatives.reason) +
+      "</p></div>" +
       '<div class="spk-scenario-list">' +
       rec.scenarios
         .map(function (scenario) {
+          const interpretationItem = interpretation.alternatives.items.find(function (item) { return item.id === scenario.id; });
           const scenarioCopy = {
             contour_adaptive: ["Menyesuaikan tapak mengikuti kontur", "Penyesuaian bentuk tapak dapat mengurangi perubahan lereng. Drainase dan kestabilan tetap perlu diperiksa."],
             terraced: ["Membuat teras pada lereng", "Teras dapat membagi panjang lereng, tetapi mengubah bentuk dan beban lereng."],
@@ -971,14 +1009,23 @@
             escapeHtml(scenario.statusLabel) +
             "</span></summary>" +
             '<div class="spk-scenario-body">' +
+            (scenario.status === "belum_dapat_dievaluasi" && interpretationItem
+              ? '<div class="spk-alternative-reason"><b>Mengapa belum dapat dievaluasi?</b><p>' + escapeHtml(interpretationItem.why) + "</p>" +
+                '<b>Data atau parameter yang masih dibutuhkan</b><p>' + escapeHtml(interpretationItem.neededParameters.length ? interpretationItem.neededParameters.join(", ") : "Belum ada parameter tambahan yang tercatat.") + "</p>" +
+                '<b>Pemeriksaan sebelum dipertimbangkan</b><ul class="spk-list spk-list--verify">' +
+                (interpretationItem.verification.length
+                  ? interpretationItem.verification.map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("")
+                  : "<li>Lakukan pemeriksaan teknis yang relevan sebelum alternatif ini dipertimbangkan.</li>") +
+                "</ul></div>"
+              : "") +
             '<span class="spk-label">Bukti</span><ul class="spk-list">' +
-            scenario.evidence.map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("") +
+            visibleRecommendationItems(scenario.evidence).map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("") +
             "</ul>" +
             '<span class="spk-label">Risiko</span><ul class="spk-list spk-list--risk">' +
-            scenario.risks.map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("") +
+            visibleRecommendationItems(scenario.risks).map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("") +
             "</ul>" +
             '<span class="spk-label">Verifikasi yang diperlukan</span><ul class="spk-list spk-list--verify">' +
-            scenario.verification.map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("") +
+            visibleRecommendationItems(scenario.verification).map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("") +
             "</ul>" +
             '<div class="spk-criterion-meta" style="margin-top:8px;"><span>Kepercayaan <b>' +
             escapeHtml(scenario.confidence) +
@@ -989,41 +1036,38 @@
         .join("") +
       "</div>" +
       '<div class="spk-disclaimer"><b>Catatan:</b> ' +
-      escapeHtml(summary.limitations.join(" ")) +
+      escapeHtml(visibleRecommendationItems(summary.limitations).join(" ")) +
       "</div></div>"
     );
   }
 
-  function constraintPresentation(item) {
-    if (!item) return { label: "NOT EVALUATED", tone: "unknown" };
-    if (item.status === "restricted_verified" || item.status === "restricted") {
-      return { label: "RESTRICTED / VERIFIED", tone: "negative" };
+  function landUseWarningCopy(warning) {
+    const source = String(warning || "");
+    const unsupported = source.match(/^(\d+)\s+fitur sumber bukan poligon/i);
+    if (unsupported) {
+      const count = Number(unsupported[1]);
+      return count === 1
+        ? "Satu objek pada data sumber tidak dihitung karena bukan merupakan area."
+        : count.toLocaleString("id-ID") + " objek pada data sumber tidak dihitung karena bukan merupakan area.";
     }
-    if (item.status === "indication_detected") {
-      return {
-        label: "INDICATION DETECTED",
-        tone: item.severity === "high" ? "negative" : "caution",
-      };
+    const invalid = source.match(/^(\d+)\s+geometri sumber tidak valid/i);
+    if (invalid) {
+      const count = Number(invalid[1]);
+      return (count === 1 ? "Satu objek data" : count.toLocaleString("id-ID") + " objek data") +
+        " memiliki bentuk yang tidak valid dan diperbaiki sebelum area dihitung.";
     }
-    if (item.status === "not_detected") {
-      return { label: "NOT DETECTED IN AVAILABLE DATA", tone: "unknown" };
+    if (/tumpang tindih/i.test(source)) {
+      return "Sebagian data saling tumpang tindih. Luas gabungan dihitung satu kali, sedangkan proporsi per kategori dapat bertumpuk.";
     }
-    if (item.status === "not_evaluated") {
-      return { label: "NOT EVALUATED", tone: "unknown" };
+    if (/cakupan guna lahan|cakupan penggunaan lahan/i.test(source)) {
+      return "";
     }
-    if (item.status === "evaluated") {
-      return item.detected
-        ? {
-            label: "INDICATION DETECTED",
-            tone: item.severity === "high" ? "negative" : "caution",
-          }
-        : { label: "NOT DETECTED IN AVAILABLE DATA", tone: "unknown" };
-    }
-    return { label: "NOT EVALUATED", tone: "unknown" };
+    return source;
   }
 
   function renderLandUseSection(assessment) {
     const report = LandUse.normalize(assessment.landUse);
+    const visibleWarnings = Array.from(new Set(report.warnings.map(landUseWarningCopy).filter(Boolean)));
     const descriptions = {
       "Hutan Lindung": "Area yang tercatat sebagai hutan lindung dalam data penggunaan lahan.",
       "Hutan Konservasi": "Area yang tercatat sebagai hutan konservasi dalam data penggunaan lahan.",
@@ -1031,8 +1075,12 @@
       "Candi Prambanan": "Area yang diberi label Candi Prambanan dalam data penggunaan lahan.",
       "Permukiman": "Area yang tercatat sebagai tempat tinggal dan lingkungan permukiman.",
       "Kebun": "Area yang tercatat sebagai kebun.",
-      "Sawah Irigasi": "Area yang tercatat sebagai sawah irigasi.",
-      "Sawah Tadah Hujan": "Area yang tercatat sebagai sawah tadah hujan.",
+      "Sawah Irigasi": "Area yang tercatat sebagai lahan persawahan dengan sistem irigasi.",
+      "Sawah Tadah Hujan": "Area persawahan yang mengandalkan air hujan.",
+      "Semak/Belukar": "Area yang tercatat sebagai semak atau belukar.",
+      "Sungai": "Area yang diberi label sungai dalam data penggunaan lahan.",
+      "Danau/Waduk": "Area yang diberi label danau atau waduk dalam data penggunaan lahan.",
+      "Makam": "Area yang tercatat sebagai makam dalam data penggunaan lahan.",
       "Tegalan/Ladang": "Area yang tercatat sebagai lahan pertanian kering atau ladang.",
     };
     const rows = report.classes
@@ -1065,21 +1113,21 @@
       escapeHtml(LandUse.formatArea(report.polygonAreaM2)) +
       "</b></span>" +
       '<span>Area tanpa informasi: <b>' + escapeHtml(LandUse.formatArea(report.uncoveredAreaM2)) + "</b></span>" +
-      '<span>Proporsi area: <b>' + escapeHtml(LandUse.formatPercent(report.coveragePercent)) + "</b></span>" +
+      '<span><span>Cakupan data penggunaan lahan: </span><b>' + escapeHtml(LandUse.formatPercent(report.coveragePercent)) + '</b><small>Persentase area yang memiliki informasi penggunaan lahan.</small></span>' +
       "</div>" +
       (rows
         ? '<div class="spk-data-table"><div class="spk-data-row spk-data-row--head"><span class="spk-data-cell">Jenis penggunaan lahan</span><span class="spk-data-cell spk-data-cell--num">Proporsi area</span><span class="spk-data-cell spk-data-cell--num">Luas</span></div>' +
           rows +
           "</div>"
-        : '<div class="spk-inline-empty">Data penggunaan lahan belum tersedia untuk area ini. Area tanpa data tidak dapat dianggap kosong atau bebas pembatasan.</div>') +
-      (report.warnings.length
+        : '<div class="spk-inline-empty">Data penggunaan lahan belum tersedia untuk area ini. Area tersebut belum dapat dinilai.</div>') +
+      (report.uncoveredAreaM2 > 0 && rows
+        ? '<div class="spk-inline-note">Bagian yang tidak memiliki data penggunaan lahan belum dapat dinilai.</div>'
+        : "") +
+      (visibleWarnings.length
         ? '<div class="spk-warning-list">' +
-          report.warnings
+          visibleWarnings
             .map(function (warning) {
-              const simpleWarning = /tumpang tindih/i.test(warning)
-                ? "Sebagian data saling tumpang tindih. Total luas area tercakup dihitung satu kali; proporsi per kategori dapat saling bertumpuk."
-                : warning;
-              return "<span>" + escapeHtml(simpleWarning) + "</span>";
+              return "<span>" + escapeHtml(warning) + "</span>";
             })
             .join("") +
           "</div>"
@@ -1087,113 +1135,121 @@
       (report.overlapAreaM2 > 0 && !report.warnings.some(function (warning) { return /tumpang tindih/i.test(warning); })
         ? '<div class="spk-inline-note">Sebagian poligon data saling tumpang tindih (' + escapeHtml(LandUse.formatArea(report.overlapAreaM2)) + '). Luas total yang tercakup dihitung tanpa menghitung bagian tumpang tindih dua kali; proporsi kategori dapat saling bertumpuk.</div>'
         : "") +
-      '<div class="spk-disclaimer">Informasi ini mengikuti kategori pada data penggunaan lahan yang tersedia. Label tersebut tidak otomatis menunjukkan batas resmi kawasan lindung atau zonasi hukum.</div>' +
-      '<div class="spk-inline-note">Data penggunaan lahan yang tersedia belum mencakup seluruh wilayah DIY. Hasil analisis hanya menggambarkan area yang masuk dalam cakupan data.</div>' +
+      '<div class="spk-disclaimer">Informasi ini mengikuti kategori pada data penggunaan lahan yang tersedia dan tidak otomatis menunjukkan batas resmi atau status hukum suatu kawasan.</div>' +
       "</div></section>"
     );
   }
 
-  function renderSensitiveSection(assessment) {
-    const report = SensitiveAreas.normalize(assessment.sensitiveAreas);
-    const summary = report.summary;
-    const cards = report.items
-      .map(function (item) {
-        return (
-          '<div class="spk-sensitive-card spk-sensitive-card--' +
-          escapeHtml(item.severity) +
-          '">' +
-          '<div class="spk-constraint-head"><div><div class="spk-constraint-title">' +
-          escapeHtml(item.sourceClass || item.label) +
-          '</div><div class="spk-criterion-meta"><span>Tercatat pada data penggunaan lahan</span></div></div></div>' +
-          '<div class="spk-spatial-meta"><span>Luas irisan: <b>' +
-          escapeHtml(SensitiveAreas.formatArea(item.areaM2)) +
-          "</b></span><span>Persentase poligon: <b>" +
-          escapeHtml(SensitiveAreas.formatPercent(item.percentOfPolygon)) +
-          "</b></span></div>" +
-          "</div>"
-        );
-      })
-      .join("");
+  function renderConstraintsTab(assessment) {
+    return renderLandUseSection(assessment);
+  }
+
+  function renderConclusionTab(assessment) {
     return (
-      '<section class="spk-section spk-spatial-section">' +
-      '<div class="spk-section-head"><div><p class="panel-eyebrow">Informasi objek dan kawasan</p><h3>Objek dan Kawasan yang Perlu Diperhatikan</h3><p>' +
-      escapeHtml(report.summaryText) +
-      "</p></div><span class=\"spk-status spk-status--" +
-      summary.tone +
-      '">' +
-      escapeHtml(summary.statusLabel) +
-      "</span></div>" +
-      (cards ||
-        '<div class="spk-inline-empty">' +
-          escapeHtml(summary.note || "Objek dan kawasan sensitif belum teridentifikasi.") +
-          "</div>") +
-      (cards ? '<div class="spk-disclaimer">Kategori mengikuti label data penggunaan lahan dan tidak otomatis menunjukkan batas resmi atau penetapan hukum.</div>' : "") +
+      '<section class="spk-section"><div class="spk-section-head"><div><h3>Kesimpulan dan Arahan Tindak Lanjut</h3><p>Kesimpulan ini dibentuk dari hasil WLC, FS, kelengkapan data, dan status alternatif yang tersedia.</p></div></div>' +
+      renderInterpretationContent(assessment, false) +
+      '<div class="spk-actions"><button type="button" class="btn btn-primary" data-spk-tab-jump="decision">Lanjut ke keputusan pengguna</button></div>' +
       "</section>"
     );
   }
 
-  function renderConstraintCard(item) {
-    const presentation = constraintPresentation(item);
+  function renderInterpretationContent(assessment, compact) {
+    const result = getInterpretation(assessment);
+    const statusClass = result.status.tone === "positive" ? "positive" : result.status.tone === "caution" ? "caution" : "unknown";
+    const formatFactorActual = function (factor) {
+      return factor.actual == null ? "Data aktual belum tersedia." : formatActual(factor.key, factor.actual);
+    };
+    const factors = result.factors.length
+      ? result.factors.map(function (factor) {
+          const dataNote = factor.dataStatus === "partial" ? "Data tersedia sebagian." : factor.dataStatus === "missing" ? "Data belum tersedia." : "";
+          return (
+            '<div class="spk-interpretation-item"><b>' + escapeHtml(factor.label) + "</b>" +
+            '<dl class="spk-factor-metrics">' +
+            '<div><dt>Skor faktor</dt><dd>' + (factor.score == null ? "Belum tersedia" : fmt(factor.score, 2) + " / 5") + "</dd></div>" +
+            '<div><dt>Bobot profil aktif</dt><dd>' + (factor.weightPercent == null ? "Belum tersedia" : fmt(factor.weightPercent, 2) + "%") + "</dd></div>" +
+            '<div><dt>Kontribusi</dt><dd>' + (factor.contribution == null ? "Belum tersedia" : fmt(factor.contribution, 3)) + "</dd></div>" +
+            '<div><dt>Nilai aktual</dt><dd>' + escapeHtml(formatFactorActual(factor)) + "</dd></div></dl>" +
+            '<p>' + escapeHtml(factor.explanation) + (dataNote ? " " + escapeHtml(dataNote) : "") + "</p></div>"
+          );
+        }).join("")
+      : '<p class="spk-inline-empty">Skor faktor belum tersedia untuk diurutkan.</p>';
+    const ranking = result.factorRanking || {};
+    const rankingRow = function (label, factor, metric, digits, suffix) {
+      return factor
+        ? '<div class="spk-factor-ranking-row"><b>' + escapeHtml(label) + '</b><span>' + escapeHtml(factor.label) + " · " + metric + " " + fmt(factor[metric === "skor" ? "score" : "contribution"], digits) + (suffix || "") + "</span></div>"
+        : "";
+    };
+    const rankingSummary =
+      '<div class="spk-factor-ranking">' +
+      rankingRow("Kontribusi terbesar", ranking.contributionLeader, "kontribusi", 3, "") +
+      rankingRow("Skor faktor tertinggi", ranking.highestScore, "skor", 2, " / 5") +
+      (result.profile && result.profile.id === "custom"
+        ? '<p>Urutan kontribusi mengikuti bobot kustom aktif (' + escapeHtml(result.profile.label || "Profil kustom") + "); indeks kustom belum menggunakan klasifikasi zona standar.</p>"
+        : '<p>Bobot faktor mengikuti ' + escapeHtml(result.profile && result.profile.label || "profil aktif") + ".</p>") +
+      "</div>";
+    const limitations = result.limitations.map(function (item) { return "<li>" + escapeHtml(item) + "</li>"; }).join("");
+    const actions = result.actions.map(function (action) {
+      return (
+        '<div class="spk-followup-item"><span class="spk-followup-priority">' + escapeHtml(String(action.presentation.order)) + "</span><div><b>" + escapeHtml(action.title) +
+        "</b><p>" + escapeHtml(action.reason) + "</p><small>Status: Disarankan · Dasar: " + escapeHtml(action.basis) + "</small></div><span class=\"spk-status spk-status--unknown\">" + escapeHtml(action.presentation.priorityLabel) + "</span></div>"
+      );
+    }).join("");
+    const alt = result.alternatives;
+    const alternativeSummary = alt.preferred
+      ? "Alternatif yang tersedia untuk kajian awal: " + alt.preferred.label + ". Ini bukan persetujuan pembangunan."
+      : alt.reason;
+    const alternatives = (
+      '<section class="spk-interpretation-block"><h4>Alternatif Pengembangan</h4><p>' + escapeHtml(alternativeSummary) + "</p>" +
+      '<div class="spk-interpretation-count">' + escapeHtml(String(alt.totalCount)) + " alternatif tersedia: " +
+      escapeHtml(String(alt.statusCounts.belumDapatDievaluasi)) + " belum dapat dievaluasi, " + escapeHtml(String(alt.statusCounts.dapatDikaji)) +
+      " dapat dipertimbangkan untuk kajian, dan " + escapeHtml(String(alt.statusCounts.diprioritaskan)) + " diprioritaskan untuk kajian.</div></section>"
+    );
+    const dataCoverage = result.dataCoverage;
+    const segmentDescription = dataCoverage.totalSegments > 0
+      ? dataCoverage.completeSegments === dataCoverage.totalSegments
+        ? "Seluruh segmen yang memiliki data penilaian sudah dilengkapi dengan parameter yang diperlukan."
+        : "Sebagian segmen yang tersedia belum memiliki seluruh parameter penilaian."
+      : "Jumlah segmen yang dapat dinilai belum tersedia.";
+    const coverageDetail =
+      '<section class="spk-interpretation-block"><h4>Kelengkapan segmen dan cakupan area</h4>' +
+      '<div class="spk-data-coverage"><div><b>Kelengkapan segmen: ' + escapeHtml(String(dataCoverage.completeSegments)) + " dari " + escapeHtml(String(dataCoverage.totalSegments)) + " lengkap</b><p>" + escapeHtml(segmentDescription) + "</p></div>" +
+      '<div><b>Luas yang tercakup: ' + (dataCoverage.coveredAreaM2 == null ? "Belum tersedia" : escapeHtml(fmtArea(dataCoverage.coveredAreaM2))) + "</b><p>Luas yang belum tercakup: " +
+      (dataCoverage.uncoveredAreaM2 == null ? "belum dapat dihitung" : escapeHtml(fmtArea(dataCoverage.uncoveredAreaM2)) +
+        (dataCoverage.uncoveredPercent == null ? "" : " (" + fmt(dataCoverage.uncoveredPercent, 1) + "% dari area)")) + ". Area tersebut belum dapat dinilai.</p></div></div></section>";
+    const detailSections = (
+      coverageDetail +
+      '<div class="spk-interpretation-grid"><section class="spk-interpretation-block"><h4>Faktor dengan Pengaruh Terbesar terhadap Nilai Penilaian</h4><p class="spk-section-desc">Skor faktor menunjukkan kondisi pada matriks penilaian. Bobot menunjukkan kepentingannya dalam profil aktif. Kontribusi adalah hasil skor dikalikan bobot. Urutan kontribusi terbesar tidak otomatis berarti tingkat bahaya tertinggi.</p>' + rankingSummary + factors +
+      '</section><section class="spk-interpretation-block"><h4>Keterbatasan Data</h4><ul class="spk-interpretation-list">' + limitations + "</ul></section></div>" +
+      '<section class="spk-interpretation-block"><h4>Arahan Tindak Lanjut</h4><p class="spk-section-desc">Semua item berstatus saran dan belum dinyatakan sudah dilakukan.</p><div class="spk-followup-list">' + actions + "</div></section>" +
+      alternatives
+    );
     return (
-      '<div class="spk-constraint ' +
-      (item.status === "not_evaluated" ? "is-unknown" : "") +
-      '"><div class="spk-constraint-head"><div><div class="spk-constraint-title">' +
-      escapeHtml(item.label) +
-      '</div><div class="spk-criterion-meta"><span>' +
-      escapeHtml(item.binding ? "Pembatas legal" : "Informatif / teknis") +
-      "</span><span>" +
-      escapeHtml(
-        item.status === "not_evaluated"
-          ? "Belum terverifikasi"
-          : item.authoritative
-          ? "Sumber berwenang"
-          : "Bukan penetapan resmi"
-      ) +
-      "</span></div></div><span class=\"spk-status spk-status--" +
-      presentation.tone +
-      '">' +
-      escapeHtml(presentation.label) +
-      "</span></div>" +
-      '<div class="spk-constraint-meta">' +
-      escapeHtml(item.message) +
-      "</div>" +
-      (item.detail ? '<div class="spk-constraint-meta">' + escapeHtml(item.detail) + "</div>" : "") +
-      (item.evidence && item.evidence.length
-        ? '<div class="spk-constraint-evidence">' +
-          item.evidence
-            .map(function (evidence) {
-              return (
-                "<span>" +
-                escapeHtml(evidence.label) +
-                ": " +
-                escapeHtml(fmtArea(evidence.valueM2)) +
-                "</span>"
-              );
-            })
-            .join("") +
-          "</div>"
-        : "") +
-      (item.dataset
-        ? '<div class="spk-criterion-actual">Sumber: <span class="mono">' +
-          escapeHtml(item.dataset) +
-          "</span></div>"
-        : '<div class="spk-criterion-actual">Sumber: dataset resmi belum tersedia.</div>') +
-      (item.verification
-        ? '<div class="spk-criterion-actual">' + escapeHtml(item.verification) + "</div>"
-        : "") +
-      "</div>"
+      '<div class="spk-interpretation ' + (compact ? "is-compact" : "") + '"><div class="spk-conclusion-banner"><span class="spk-status spk-status--' + statusClass + '">' + escapeHtml(result.status.label) +
+      '</span><p>' + escapeHtml(result.summary) + "</p></div>" +
+      '<ul class="spk-interpretation-reasons">' + result.reasons.map(function (reason) { return "<li>" + escapeHtml(reason) + "</li>"; }).join("") + "</ul>" +
+      detailSections +
+      '<div class="spk-decision-summary"><p>' + escapeHtml(result.decisionNote) + "</p></div></div>"
     );
   }
 
-  function renderConstraintsTab(assessment) {
-    const constraints = assessment.constraints;
-    if (!constraints) return '<div class="spk-alert spk-alert--warn">Pembatas spasial belum dievaluasi.</div>';
-    const sensitive = SensitiveAreas.normalize(assessment.sensitiveAreas);
+  function renderFinalTab(assessment) {
+    const record = state.savedRecord;
+    if (!record) return '<div class="spk-alert spk-alert--warn">Keputusan belum tersimpan.</div>';
+    const decision = record.humanDecision || {};
     return (
-      '<div class="spk-section">' +
-      renderLandUseSection(assessment) +
-      (sensitive.items.length ? renderSensitiveSection(assessment) : "") +
-      '<div class="spk-disclaimer">Data batas resmi kawasan perlindungan dan tata ruang belum tersedia untuk diperiksa dalam aplikasi ini. Hasil ini tidak menyimpulkan bahwa lokasi bebas dari pembatasan hukum.</div></div>'
+      '<section class="spk-section"><div class="spk-section-head"><div><h3>Hasil Akhir Pemeriksaan</h3><p>Ringkasan sistem dan keputusan pemeriksa yang tersimpan.</p></div></div>' +
+      '<p class="spk-final-record-id">' + escapeHtml(record.assessmentId) + " · " + escapeHtml(record.reviewId) + " · " + escapeHtml(record.createdAt ? new Date(record.createdAt).toLocaleString("id-ID") : "") + "</p>" +
+      '<section class="spk-section"><h4>Kesimpulan Sistem</h4>' + renderInterpretationContent(assessment, true) + "</section>" +
+      '<section class="spk-final-decision"><h4>Keputusan Pemeriksa</h4><dl>' +
+      "<div><dt>Nama peninjau</dt><dd>" + escapeHtml(decision.reviewer || "-") + "</dd></div>" +
+      "<div><dt>Tanggal pemeriksaan</dt><dd>" + escapeHtml(decision.decidedAt || "-") + "</dd></div>" +
+      "<div><dt>Keputusan</dt><dd>" + escapeHtml(decisionLabel(decision.status || "")) + "</dd></div>" +
+      "<div><dt>Alasan keputusan</dt><dd>" + escapeHtml(decision.rationale || "-") + "</dd></div>" +
+      "<div><dt>Catatan tambahan</dt><dd>" + escapeHtml(decision.notes || "-") + "</dd></div>" +
+      "</dl></section>" +
+      '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Catatan arsip lokal</span><span class="spk-alert-text">Catatan tersimpan pada browser perangkat ini, bukan basis data terpusat. ' + escapeHtml(getInterpretation(assessment).finalNote) + "</span></div>" +
+      '<div class="spk-actions"><button type="button" class="btn btn-primary" id="spk-final-export">Ekspor hasil akhir JSON</button></div>' +
+      '<div id="spk-final-export-status" class="spk-field-help" role="status"></div></section>'
     );
   }
 
@@ -1226,14 +1282,10 @@
     const history = records.slice(0, 6);
     const saved = state.savedRecord;
     return (
+      '<div class="spk-decision-prelude"><h3>Dasar Keputusan</h3>' +
+      renderInterpretationContent(assessment, true) +
+      "</div>" +
       '<div class="spk-section">' +
-      '<div class="spk-decision-summary"><h4>Rekomendasi sistem</h4><p>' +
-      escapeHtml(
-        assessment.recommendations && assessment.recommendations.summary
-          ? assessment.recommendations.summary.title + ". " + assessment.recommendations.summary.nextStep
-          : "Rekomendasi belum tersedia."
-      ) +
-      "</p><p>Rekomendasi sistem merupakan bahan pertimbangan. Keputusan akhir tetap berada pada pihak yang berwenang.</p></div>" +
       (saved
         ? '<div class="spk-alert spk-alert--success"><span class="spk-alert-title">Keputusan tersimpan lokal</span><span class="spk-alert-text">' +
           escapeHtml(saved.reviewId) +
@@ -1248,7 +1300,7 @@
       field("Tanggal pemeriksaan", '<input id="spk-decision-date" name="decidedAt" type="date" value="' + escapeHtml(form.decidedAt) + '">') +
       "</div>" +
       field("Keputusan", '<select id="spk-decision-status" name="status">' + statusOptions + "</select>") +
-      field("Alasan keputusan", '<textarea id="spk-rationale" name="rationale" placeholder="Jelaskan alasan keputusan dan hal yang menjadi pertimbangan.">' + escapeHtml(form.rationale) + "</textarea>") +
+      field("Alasan keputusan", '<textarea id="spk-rationale" name="rationale" placeholder="Jelaskan pertimbangan, termasuk apakah keputusan mengikuti kesimpulan sistem atau memerlukan pemeriksaan tambahan.">' + escapeHtml(form.rationale) + "</textarea>") +
       field("Catatan tambahan", '<textarea id="spk-notes" name="notes" placeholder="Tuliskan tindak lanjut atau pemeriksaan yang masih diperlukan.">' + escapeHtml(form.notes) + "</textarea>") +
       '<div class="spk-field-help">Nama peninjau wajib diisi. Alasan wajib untuk keputusan selain “Belum diputuskan”.</div>' +
       '<div class="spk-actions">' +
@@ -1258,7 +1310,7 @@
       "</div>" +
       '<div id="spk-form-status" class="spk-field-help" role="status"></div>' +
       "</form>" +
-      '<div class="spk-disclaimer"><b>Rekam jejak:</b> konfigurasi bobot, skor, FS, pembatas, rekomendasi, dan keputusan pengguna disertakan dalam catatan ekspor. Keputusan dapat berbeda dari rekomendasi sistem.</div>' +
+      '<div class="spk-disclaimer"><b>Rekam jejak:</b> konfigurasi bobot, skor, FS, rekomendasi, dan keputusan pengguna disertakan dalam catatan ekspor. Keputusan dapat berbeda dari rekomendasi sistem.</div>' +
       "</div>" +
       '<div class="spk-section"><div class="spk-section-head"><div><h3>Riwayat lokal</h3><p>' +
       records.length +
@@ -1369,6 +1421,7 @@
     }
     state.savedRecord = result.record;
     assessment.humanDecision = result.record.humanDecision;
+    state.activeTab = "final";
     render();
   }
 
@@ -1399,6 +1452,12 @@
         render();
       });
     });
+    els.body.querySelectorAll("[data-spk-tab-jump]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        state.activeTab = button.getAttribute("data-spk-tab-jump");
+        render();
+      });
+    });
     els.body.querySelectorAll("[data-segment-id]").forEach(function (row) {
       row.addEventListener("click", function () {
         selectSegment(row.getAttribute("data-segment-id"), { fromTable: true });
@@ -1411,6 +1470,14 @@
     if (saveDraft) saveDraft.addEventListener("click", function () { saveDecision(true); });
     const exportButton = document.getElementById("spk-export-decision");
     if (exportButton) exportButton.addEventListener("click", exportDecision);
+    const finalExport = document.getElementById("spk-final-export");
+    if (finalExport) {
+      finalExport.addEventListener("click", function () {
+        const status = document.getElementById("spk-final-export-status");
+        const ok = Store.downloadReview(state.savedRecord);
+        if (status) status.textContent = ok ? "Hasil akhir diekspor sebagai JSON." : "Ekspor tidak tersedia di browser ini.";
+      });
+    }
     const clearHistory = document.getElementById("spk-clear-history");
     if (clearHistory) {
       clearHistory.addEventListener("click", function () {
