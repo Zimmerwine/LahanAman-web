@@ -3,391 +3,640 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LahanAman GeoAnalytics DIY — Enterprise Geotechnical &amp; Slope Stability Dashboard</title>
-  <!-- Leaflet CSS -->
+  <meta name="description" content="LahanAman GeoAnalytics DIY — sistem pendukung keputusan kerawanan longsor berbasis WebGIS, skoring GPKG, dan analisis kestabilan lereng." />
+  <meta name="theme-color" content="#15243A" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315243A'/%3E%3Cpath d='M5 23.5 11 7l5 9 3-4 8 11.5H5Z' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <title>LahanAman GeoAnalytics DIY — SPK Kerawanan Longsor</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Leaflet-Geoman CSS -->
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
-  <!-- Tailwind CSS CDN for Enterprise Geospatial Utility Classes -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <!-- Custom Styles -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-  <!-- TOP NAVBAR -->
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-logo">LA</div>
-      <div class="brand-title">
-        <div class="brand-heading">
-          <h1>LahanAman GeoAnalytics DIY</h1>
-          <span class="crs-badge" title="Standar Perhitungan Spasial: EPSG:32749 (UTM Zone 49S)">UTM 49S: EPSG:32749</span>
-          <span class="crs-badge crs-badge-wgs" title="Visualisasi Peta Dasar: EPSG:4326 (WGS 84)">WGS84: EPSG:4326</span>
-        </div>
-        <p>Sistem Analisis Kestabilan Lereng (Infinite Slope FS) &amp; Kelayakan Perumahan Berbasis Data Mekanika Tanah DIY</p>
+  <svg class="icon-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-polygon" viewBox="0 0 24 24">
+      <path d="M4 6.5 10.5 3l5 3.5L20 5v8.5L13 21l-7-3.5L4 12Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <circle cx="10.5" cy="3" r="1.4" fill="currentColor"/><circle cx="20" cy="5" r="1.4" fill="currentColor"/><circle cx="13" cy="21" r="1.4" fill="currentColor"/><circle cx="4" cy="6.5" r="1.4" fill="currentColor"/>
+    </symbol>
+    <symbol id="icon-layers" viewBox="0 0 24 24">
+      <path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="m4 12 8 4.5 8-4.5M4 16.5 12 21l8-4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-reset" viewBox="0 0 24 24">
+      <path d="M4 4v6h6M20 20v-6h-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M5.4 15a7.5 7.5 0 0 0 12.4 2.2M18.6 9A7.5 7.5 0 0 0 6.2 6.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-sliders" viewBox="0 0 24 24">
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <circle cx="15" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24">
+      <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24">
+      <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="m15.5 15.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-panel" viewBox="0 0 24 24">
+      <rect x="3.5" y="4" width="17" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M14.5 4v16" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24">
+      <path d="m8 10 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+
+  <header class="topbar" role="banner">
+    <div class="topbar-brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img">
+          <path d="M5 23.5 11 7l5 9 3-4 8 11.5H5Z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M8.5 23.5h15" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="brand-copy">
+        <h1>LahanAman <span>GeoAnalytics</span></h1>
+        <p>Sistem Pendukung Keputusan Kerawanan Longsor DIY</p>
       </div>
     </div>
 
-    <div class="topbar-stats">
-      <div class="stat-pill" title="ZONA HIJAU (Skor &lt; 2,20 | Datar / Risiko Rendah / Konstruksi Standar)">
-        <span class="dot" style="background:#2E7D32;"></span>
-        <span>Skor Hijau (&lt;2,20): <b id="stat-hijau">0</b></span>
-      </div>
-      <div class="stat-pill" title="ZONA KUNING (Skor 2,20–3,40 | Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud)">
-        <span class="dot" style="background:#FB8C00;"></span>
-        <span>Skor Kuning (2,20–3,40): <b id="stat-kuning">0</b></span>
-      </div>
-      <div class="stat-pill" title="ZONA MERAH (Skor &gt; 3,40 | Risiko Tinggi / Rawan Longsor / Non-Buildable)">
-        <span class="dot" style="background:#D32F2F;"></span>
-        <span>Skor Merah (&gt;3,40): <b id="stat-merah">0</b></span>
-      </div>
+    <div class="region-summary" aria-label="Ringkasan klasifikasi zona wilayah">
+      <span class="region-summary-label">Zona wilayah</span>
+      <span class="summary-item summary-item--green"><span class="zone-dot"></span>Hijau <b id="stat-hijau">0</b></span>
+      <span class="summary-item summary-item--yellow"><span class="zone-dot"></span>Kuning <b id="stat-kuning">0</b></span>
+      <span class="summary-item summary-item--red"><span class="zone-dot"></span>Merah <b id="stat-merah">0</b></span>
     </div>
 
-    <div class="topbar-actions">
-      <button class="btn btn-draw-kavling" id="btn-draw-kavling-top" title="Gambar Poligon Kavling Lahan untuk Analisis Segmentasi Zona &amp; Lereng DEMNAS">
-        ✏️ Gambar Poligon Kavling
+    <div class="topbar-right">
+      <span class="crs-indicator" title="Perhitungan metrik EPSG:32749 (UTM Zone 49S), visualisasi peta EPSG:4326 (WGS 84)">
+        <span class="crs-dot"></span>EPSG:32749 · 4326
+      </span>
+      <button type="button" class="btn btn-secondary mobile-panel-btn" id="btn-open-filters" aria-label="Buka panel wilayah dan layer">
+        <svg class="icon" aria-hidden="true"><use href="#icon-layers"></use></svg><span>Wilayah</span>
       </button>
-      <button class="btn" id="btn-clear-selection" title="Reset Poligon Kavling &amp; Bersihkan Sorotan Peta">
-        🗑️ Reset Kavling
+      <button type="button" class="btn btn-secondary mobile-panel-btn" id="btn-open-inspector" aria-label="Buka panel inspeksi">
+        <svg class="icon" aria-hidden="true"><use href="#icon-panel"></use></svg><span>Inspeksi</span>
       </button>
-      <button class="btn btn-primary" id="btn-reset-view" title="Tampilkan jangkauan wilayah DIY">
-        🎯 Reset DIY
+      <button type="button" class="btn btn-secondary spk-open-btn" id="btn-open-spk" title="Buka analisis SPK berbasis bobot WLC" aria-haspopup="dialog" aria-controls="spk-drawer">
+        <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg><span class="btn-label">Analisis SPK</span>
+      </button>
+      <button type="button" class="btn btn-primary" id="btn-draw-kavling-top" title="Gambar poligon kavling untuk analisis segmentasi zona dan lereng">
+        <svg class="icon" aria-hidden="true"><use href="#icon-polygon"></use></svg><span class="kavling-btn-label">Gambar Kavling</span>
+      </button>
+      <button type="button" class="btn btn-secondary" id="btn-clear-selection" title="Hapus poligon kavling dan sorotan peta">
+        <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg><span class="btn-label">Reset</span>
+      </button>
+      <button type="button" class="btn btn-ghost btn-icon" id="btn-reset-view" title="Kembalikan tampilan peta ke jangkauan DIY" aria-label="Reset tampilan peta">
+        <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
       </button>
     </div>
   </header>
 
-  <!-- MAIN WORKSPACE (Grid: 320px Left Sidebar | 1fr Map | 380px Right Sidebar) -->
-  <main class="workspace">
+  <main class="workspace" id="workspace">
 
-    <!-- LEFT SIDEBAR (Lebar 320px): FILTER ADMINISTRASI HIERARKIS DI ATAS, KONTROL LAYER SPASIAL DI BAWAHNYA -->
-    <aside class="sidebar-left">
+    <aside class="sidebar sidebar-left" id="sidebar-left" aria-label="Penjelajah wilayah dan manajemen layer">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-eyebrow">Regional explorer</p>
+          <h2>Wilayah &amp; Layer</h2>
+        </div>
+        <button type="button" class="icon-btn drawer-close" id="btn-close-filters" aria-label="Tutup panel wilayah">
+          <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+
       <div class="panel-scroll custom-thin-scrollbar">
 
-        <!-- 1. FILTER ADMINISTRASI HIERARKIS (PENGGANTI PENCARIAN DUSUN) -->
-        <div class="section-card">
-          <div class="section-title">
-            <span>🏛️ Filter Wilayah Administrasi</span>
+        <section class="panel-section" aria-labelledby="filter-heading">
+          <div class="section-heading">
+            <h3 id="filter-heading">Filter wilayah</h3>
             <span id="filter-count-badge" class="badge-count">Hierarkis</span>
           </div>
-          <div class="search-hint" style="margin-top:0;margin-bottom:8px;">
-            Pilih Kabupaten/Kota &rarr; Kapanewon &rarr; Kalurahan untuk zoom presisi ke batas administrasi desa.
-          </div>
+          <p class="helper-text">Pilih kabupaten/kota, kapanewon, lalu kalurahan untuk zoom ke batas administrasi.</p>
 
-          <div class="cascading-filter-group">
-            <div class="cascading-field">
-              <label class="input-label" for="select-kabupaten">1. Kabupaten / Kota</label>
+          <div class="field-stack">
+            <div class="field">
+              <label class="input-label" for="select-kabupaten">Kabupaten / Kota</label>
               <select id="select-kabupaten" class="select-box">
-                <option value="">-- Semua Kabupaten/Kota (DIY) --</option>
+                <option value="">Semua Kabupaten/Kota (DIY)</option>
               </select>
             </div>
-
-            <div class="cascading-field">
-              <label class="input-label" for="select-kapanewon">2. Kapanewon / Kecamatan</label>
+            <div class="field">
+              <label class="input-label" for="select-kapanewon">Kapanewon / Kecamatan</label>
               <select id="select-kapanewon" class="select-box" disabled>
-                <option value="">-- Pilih Kapanewon --</option>
+                <option value="">Pilih Kapanewon</option>
               </select>
             </div>
-
-            <div class="cascading-field">
-              <label class="input-label" for="select-kalurahan">3. Kalurahan / Kelurahan</label>
+            <div class="field">
+              <label class="input-label" for="select-kalurahan">Kalurahan / Kelurahan</label>
               <select id="select-kalurahan" class="select-box" disabled>
-                <option value="">-- Pilih Kalurahan (Auto Zoom) --</option>
+                <option value="">Pilih Kalurahan</option>
               </select>
             </div>
-
-            <div class="cascading-field">
-              <label class="input-label" for="filter-zona">Filter Kategori Zona GPKG</label>
+            <div class="field">
+              <label class="input-label" for="filter-zona">Klasifikasi zona</label>
               <select id="filter-zona" class="select-box">
-                <option value="ALL">Semua Kelas Skoring (GPKG)</option>
-                <option value="Zona Hijau">Skor &lt; 2,20 — Zona Hijau (Risiko Rendah)</option>
-                <option value="Zona Kuning">Skor 2,20–3,40 — Zona Kuning (Risiko Sedang)</option>
-                <option value="Zona Merah">Skor &gt; 3,40 — Zona Merah (Risiko Tinggi)</option>
+                <option value="ALL">Semua kelas skoring</option>
+                <option value="Zona Hijau">Zona Hijau — skor &lt; 2,20</option>
+                <option value="Zona Kuning">Zona Kuning — skor 2,20–3,40</option>
+                <option value="Zona Merah">Zona Merah — skor &gt; 3,40</option>
               </select>
             </div>
-          </div>
-
-          <!-- Ringkasan Kalurahan Terpilih -->
-          <div id="selected-admin-banner" class="selected-admin-banner" style="display:none;"></div>
-
-          <!-- Daftar Cepat Kalurahan Hasil Filter -->
-          <div style="margin-top:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <span class="input-label" style="margin-bottom:0;">Daftar Wilayah Kalurahan</span>
-              <button type="button" id="btn-reset-admin-filter" class="text-xs font-semibold text-blue-700 hover:underline">Reset Filter</button>
+            <div class="field">
+              <label class="input-label" for="admin-search">Cari wilayah</label>
+              <div class="search-field">
+                <svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>
+                <input type="search" id="admin-search" class="search-input" placeholder="Kalurahan, kapanewon, kabupaten" autocomplete="off" />
+              </div>
             </div>
-            <div id="admin-filter-list" class="search-results custom-thin-scrollbar"></div>
           </div>
-        </div>
 
-        <!-- 2. KONTROL LAYER SPASIAL & OPACITY (SIDEBAR KIRI) -->
-        <div class="section-card">
-          <div class="section-title">
-            <span>🗂️ Kontrol Layer Spasial</span>
-            <span class="badge-count">10% – 100%</span>
-          </div>
-          <div id="sidebar-layer-controls" class="sidebar-layer-list custom-thin-scrollbar">
-            <!-- Diisi otomatis dan disinkronkan dengan Floating Layer Controller -->
-          </div>
-        </div>
+          <div id="selected-admin-banner" class="selected-admin-banner" hidden></div>
 
-        <!-- 3. PETA DASAR (BASEMAP SWITCHER) -->
-        <div class="section-card">
-          <div class="section-title">
-            <span>🗺️ Peta Dasar (Basemap)</span>
+          <div class="list-heading">
+            <span class="input-label">Daftar kalurahan</span>
+            <button type="button" id="btn-reset-admin-filter" class="text-button">Reset filter</button>
           </div>
-          <select id="basemap-select" class="select-box">
-            <option value="google_hybrid" selected>Google Maps Hybrid (Satelit + Jalan/Label)</option>
-            <option value="osm">OpenStreetMap Standar</option>
-            <option value="google_sat">Google Maps Satellite (Citra Murni)</option>
-            <option value="google_terrain">Google Maps Terrain (Kontur &amp; Topografi)</option>
-            <option value="google_streets">Google Maps Streets (Peta Jalan)</option>
-          </select>
+          <div id="admin-filter-list" class="region-list custom-thin-scrollbar"></div>
+        </section>
 
-          <div style="margin-top:10px;">
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px;">
-              <span>Transparansi Sorotan Kalurahan</span>
+        <section class="panel-section" aria-labelledby="layers-heading">
+          <div class="section-heading">
+            <h3 id="layers-heading">Manajemen layer</h3>
+            <span class="badge-count" id="active-layer-count">0 aktif</span>
+          </div>
+
+          <div class="layer-group">
+            <div class="layer-group-heading">
+              <span>Layer analitik</span>
+              <span class="layer-group-meta">Bobot GPKG</span>
+            </div>
+            <div id="sidebar-layer-controls" class="layer-list">
+
+              <div class="layer-item" id="sb-card-kerawananLongsor">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer skoring kerawanan longsor">
+                    <input type="checkbox" id="chk-kerawanan-longsor" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-kerawanan-longsor">
+                    <span class="layer-name">Skoring kerawanan longsor</span>
+                    <span class="layer-desc">Indeks GPKG · weighted overlay</span>
+                  </label>
+                  <span class="layer-weight">Indeks</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="kerawananLongsor" aria-expanded="false" aria-label="Atur opasitas skoring kerawanan longsor">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-kerawananLongsor">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="kerawananLongsor" aria-label="Opasitas skoring kerawanan longsor" />
+                  <b id="opacity-lbl-kerawananLongsor">65%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-lerengPoly">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer kemiringan lereng">
+                    <input type="checkbox" id="chk-lereng-poly" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-lereng-poly">
+                    <span class="layer-name">Kemiringan lereng</span>
+                    <span class="layer-desc">DEMNAS · sudut β</span>
+                  </label>
+                  <span class="layer-weight">30%</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="lerengPoly" aria-expanded="false" aria-label="Atur opasitas kemiringan lereng">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-lerengPoly">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="lerengPoly" aria-label="Opasitas kemiringan lereng" />
+                  <b id="opacity-lbl-lerengPoly">65%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-tanah">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer karakteristik tanah">
+                    <input type="checkbox" id="chk-tanah" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-tanah">
+                    <span class="layer-name">Karakteristik tanah</span>
+                    <span class="layer-desc">Pedologi · c′, φ′, γsat</span>
+                  </label>
+                  <span class="layer-weight">25%</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="tanah" aria-expanded="false" aria-label="Atur opasitas karakteristik tanah">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-tanah">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="tanah" aria-label="Opasitas karakteristik tanah" />
+                  <b id="opacity-lbl-tanah">60%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-geologi">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer litologi dan formasi geologi">
+                    <input type="checkbox" id="chk-geologi" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-geologi">
+                    <span class="layer-name">Litologi &amp; geologi</span>
+                    <span class="layer-desc">Formasi batuan</span>
+                  </label>
+                  <span class="layer-weight">20%</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="geologi" aria-expanded="false" aria-label="Atur opasitas litologi dan geologi">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-geologi">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="geologi" aria-label="Opasitas litologi dan geologi" />
+                  <b id="opacity-lbl-geologi">60%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-idwHujan">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer curah hujan tahunan">
+                    <input type="checkbox" id="chk-hujan" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-hujan">
+                    <span class="layer-name">Curah hujan tahunan</span>
+                    <span class="layer-desc">Isohyet · rasio m</span>
+                  </label>
+                  <span class="layer-weight">15%</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="idwHujan" aria-expanded="false" aria-label="Atur opasitas curah hujan tahunan">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-idwHujan">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="idwHujan" aria-label="Opasitas curah hujan tahunan" />
+                  <b id="opacity-lbl-idwHujan">60%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-tutupan">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer tutupan lahan">
+                    <input type="checkbox" id="chk-tutupan" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-tutupan">
+                    <span class="layer-name">Tutupan lahan</span>
+                    <span class="layer-desc">RBI 25K · cr, q</span>
+                  </label>
+                  <span class="layer-weight">10%</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="tutupan" aria-expanded="false" aria-label="Atur opasitas tutupan lahan">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-tutupan">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="tutupan" aria-label="Opasitas tutupan lahan" />
+                  <b id="opacity-lbl-tutupan">60%</b>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="layer-group">
+            <div class="layer-group-heading">
+              <span>Layer referensi</span>
+              <span class="layer-group-meta">Konteks</span>
+            </div>
+            <div class="layer-list">
+
+              <div class="layer-item" id="sb-card-admin">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan garis batas administrasi">
+                    <input type="checkbox" id="chk-admin" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-admin">
+                    <span class="layer-name">Batas administrasi</span>
+                    <span class="layer-desc">Kalurahan / kelurahan</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Ref</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="admin" aria-expanded="false" aria-label="Atur opasitas batas administrasi">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-admin">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="75" data-opacity-key="admin" aria-label="Opasitas batas administrasi" />
+                  <b id="opacity-lbl-admin">75%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-titikDev">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer titik sampel developer">
+                    <input type="checkbox" id="chk-titik-dev" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-titik-dev">
+                    <span class="layer-name">Titik sampel developer</span>
+                    <span class="layer-desc">Lokasi uji lapangan</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Ref</span>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-areaDev">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer area buffer">
+                    <input type="checkbox" id="chk-area-dev" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-area-dev">
+                    <span class="layer-name">Area buffer</span>
+                    <span class="layer-desc">Radius jangkauan uji 500 m</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Ref</span>
+                  <button type="button" class="layer-config-btn" data-layer-config="areaDev" aria-expanded="false" aria-label="Atur opasitas area buffer">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+                  </button>
+                </div>
+                <div class="layer-opacity" id="opacity-wrap-areaDev">
+                  <span>Opasitas</span>
+                  <input type="range" min="10" max="100" step="5" value="50" data-opacity-key="areaDev" aria-label="Opasitas area buffer" />
+                  <b id="opacity-lbl-areaDev">50%</b>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-posHujan">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer pos pengamatan hujan">
+                    <input type="checkbox" id="chk-pos-hujan" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-pos-hujan">
+                    <span class="layer-name">Pos pengamatan hujan</span>
+                    <span class="layer-desc">Stasiun BBWS</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Ref</span>
+                </div>
+              </div>
+
+              <div class="layer-item" id="sb-card-demnas">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer grid referensi DEMNAS">
+                    <input type="checkbox" id="chk-demnas" />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-demnas">
+                    <span class="layer-name">Grid referensi DEMNAS</span>
+                    <span class="layer-desc">Tile UTM 49S</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Ref</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="layer-group">
+            <div class="layer-group-heading">
+              <span>Layer informasi SPK</span>
+              <span class="layer-group-meta">Hasil kavling</span>
+            </div>
+            <div class="layer-list">
+              <div class="layer-item spk-layer-item" id="sb-card-spkLandUse" data-spk-layer-card="landUse">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer sebaran guna lahan hasil analisis">
+                    <input type="checkbox" id="chk-spk-land-use" data-spk-layer="landUse" disabled />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-spk-land-use">
+                    <span class="layer-name">Sebaran guna lahan</span>
+                    <span class="layer-desc">Informasi, bukan status hukum</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Inf</span>
+                </div>
+              </div>
+
+              <div class="layer-item spk-layer-item" id="sb-card-spkSensitive" data-spk-layer-card="sensitive">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Aktifkan layer objek dan kawasan sensitif hasil analisis">
+                    <input type="checkbox" id="chk-spk-sensitive" data-spk-layer="sensitive" disabled />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-spk-sensitive">
+                    <span class="layer-name">Objek &amp; kawasan sensitif</span>
+                    <span class="layer-desc">Indikasi dari kelas guna lahan</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Inf</span>
+                </div>
+              </div>
+
+              <div class="layer-item spk-layer-item" id="sb-card-spkLegal" data-spk-layer-card="legal">
+                <div class="layer-row">
+                  <label class="switch" aria-label="Layer pembatas legal belum tersedia">
+                    <input type="checkbox" id="chk-spk-legal" data-spk-layer="legal" disabled />
+                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                  </label>
+                  <label class="layer-copy" for="chk-spk-legal">
+                    <span class="layer-name">Pembatas legal terverifikasi</span>
+                    <span class="layer-desc">Belum tersedia — bukan berarti bebas</span>
+                  </label>
+                  <span class="layer-weight layer-weight--muted">Legal</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section" aria-labelledby="basemap-heading">
+          <div class="section-heading">
+            <h3 id="basemap-heading">Peta dasar</h3>
+          </div>
+          <div class="field">
+            <label class="input-label" for="basemap-select">Basemap</label>
+            <select id="basemap-select" class="select-box">
+              <option value="google_hybrid" selected>Google Hybrid</option>
+              <option value="osm">OpenStreetMap</option>
+              <option value="google_sat">Google Satellite</option>
+              <option value="google_terrain">Google Terrain</option>
+              <option value="google_streets">Google Streets</option>
+            </select>
+          </div>
+          <div class="range-field">
+            <div class="range-field-header">
+              <label for="poly-opacity">Sorotan wilayah terpilih</label>
               <span id="opacity-val">55%</span>
             </div>
-            <input type="range" id="poly-opacity" min="10" max="100" step="5" value="55" style="width:100%;" />
+            <input type="range" id="poly-opacity" min="10" max="100" step="5" value="55" />
           </div>
-        </div>
+        </section>
 
-        <!-- 4. INSPEKSI KOORDINAT PRESISI (WGS84 & UTM 49S) -->
-        <div class="section-card">
-          <div class="section-title">
-            <span>📐 Inspeksi Titik Koordinat</span>
-            <span class="badge-count">EPSG:4326 / 32749</span>
-          </div>
-
-          <div class="method-nav-tabs">
-            <button class="method-tab-btn active" id="btn-tab-wgs" type="button">
-              🌐 WGS84 (Lat/Lng)
-            </button>
-            <button class="method-tab-btn" id="btn-tab-utm" type="button">
-              📐 UTM 49S (X/Y)
-            </button>
-          </div>
-
-          <!-- PANE 1: LATITUDE & LONGITUDE (EPSG:4326) -->
-          <div id="pane-method-wgs" class="method-pane active">
-            <div class="filter-row" style="margin-top:6px;margin-bottom:6px;">
-              <div style="flex:1;">
-                <label class="input-label">Latitude (° LS)</label>
-                <input type="number" step="0.00001" id="input-lat" class="search-input" style="margin-bottom:0;" placeholder="-7.71670" value="-7.71670" />
-              </div>
-              <div style="flex:1;">
-                <label class="input-label">Longitude (° BT)</label>
-                <input type="number" step="0.00001" id="input-lon" class="search-input" style="margin-bottom:0;" placeholder="110.41860" value="110.41860" />
-              </div>
+        <details class="panel-disclosure">
+          <summary>
+            <span>Inspeksi titik koordinat</span>
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </summary>
+          <div class="disclosure-body">
+            <div class="method-nav-tabs" role="tablist" aria-label="Sistem koordinat">
+              <button type="button" class="method-tab-btn active" id="btn-tab-wgs" role="tab" aria-selected="true">WGS 84</button>
+              <button type="button" class="method-tab-btn" id="btn-tab-utm" role="tab" aria-selected="false">UTM 49S</button>
             </div>
-            <button class="btn btn-primary" id="btn-analyze-coords" style="width:100%;justify-content:center;">
-              📍 Inspeksi Koordinat WGS84
-            </button>
-          </div>
 
-          <!-- PANE 2: UTM EASTING & NORTHING (EPSG:32749) -->
-          <div id="pane-method-utm" class="method-pane" style="display:none;">
-            <div class="filter-row" style="margin-top:6px;margin-bottom:6px;">
-              <div style="flex:1;">
-                <label class="input-label">Easting X (mE)</label>
-                <input type="number" id="input-utm-x" class="search-input" style="margin-bottom:0;" placeholder="435865" value="435865" />
+            <div id="pane-method-wgs" class="method-pane active">
+              <div class="coordinate-grid">
+                <div class="field">
+                  <label class="input-label" for="input-lat">Latitude (° LS)</label>
+                  <input type="number" step="0.00001" id="input-lat" class="search-input" placeholder="-7.71670" value="-7.71670" />
+                </div>
+                <div class="field">
+                  <label class="input-label" for="input-lon">Longitude (° BT)</label>
+                  <input type="number" step="0.00001" id="input-lon" class="search-input" placeholder="110.41860" value="110.41860" />
+                </div>
               </div>
-              <div style="flex:1;">
-                <label class="input-label">Northing Y (mS)</label>
-                <input type="number" id="input-utm-y" class="search-input" style="margin-bottom:0;" placeholder="9146908" value="9146908" />
-              </div>
+              <button type="button" class="btn btn-primary btn-block" id="btn-analyze-coords">Inspeksi koordinat</button>
             </div>
-            <button class="btn btn-primary" id="btn-goto-utm" style="width:100%;justify-content:center;">
-              📐 Inspeksi Titik UTM 49S
-            </button>
-          </div>
-        </div>
 
+            <div id="pane-method-utm" class="method-pane" style="display:none;">
+              <div class="coordinate-grid">
+                <div class="field">
+                  <label class="input-label" for="input-utm-x">Easting X (mE)</label>
+                  <input type="number" id="input-utm-x" class="search-input" placeholder="435865" value="435865" />
+                </div>
+                <div class="field">
+                  <label class="input-label" for="input-utm-y">Northing Y (mS)</label>
+                  <input type="number" id="input-utm-y" class="search-input" placeholder="9146908" value="9146908" />
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary btn-block" id="btn-goto-utm">Inspeksi titik UTM</button>
+            </div>
+          </div>
+        </details>
+
+        <p class="panel-footnote">Metode: Permen PU No. 22/PRT/M/2007, SNI 8291:2016, dan matriks empiris <span class="mono">Dasar.xlsx</span>.</p>
       </div>
     </aside>
 
-    <!-- CENTER MAP -->
-    <section class="map-wrapper">
-      <div id="loading-toast" class="loading-toast">⏳ Memuat data spasial geoteknik DIY...</div>
+    <section class="map-workspace" aria-label="Ruang kerja peta">
       <div id="map"></div>
+      <div id="loading-toast" class="loading-toast" role="status" aria-live="polite"></div>
 
-      <!-- LIVE COORDINATE BAR (HITUNGAN EPSG:32749 + PETA EPSG:4326) -->
-      <div class="map-coord-bar">
-        <span>🌐 <b>WGS84 (EPSG:4326)</b>: <span id="coord-wgs">-7.71670°, 110.41860°</span></span>
-        <span class="coord-sep">|</span>
-        <span>📐 <b>UTM 49S (EPSG:32749)</b>: <span id="coord-utm">X: 435.865,0 mE, Y: 9.146.908,0 mS</span></span>
+      <div class="map-toolbar" role="toolbar" aria-label="Kontrol peta">
+        <button type="button" class="tool-btn" id="btn-toggle-layer-panel" title="Buka atau tutup panel wilayah dan layer">
+          <svg class="icon" aria-hidden="true"><use href="#icon-layers"></use></svg><span>Layer</span>
+        </button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button type="button" class="tool-btn tool-btn--primary" id="btn-draw-kavling" title="Gambar poligon kavling pada peta">
+          <svg class="icon" aria-hidden="true"><use href="#icon-polygon"></use></svg><span>Gambar poligon</span>
+        </button>
+        <button type="button" class="tool-btn" id="btn-cancel-draw" disabled title="Batalkan mode gambar">
+          Batal
+        </button>
+        <button type="button" class="tool-btn tool-btn--danger" id="btn-reset-kavling-map" style="display:none;" title="Hapus poligon dan hasil analisis kavling">
+          <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg><span>Reset kavling</span>
+        </button>
+        <button type="button" class="tool-btn" id="btn-demo-kavling" title="Uji sampel poligon kavling lintas zona">
+          Sampel kavling
+        </button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <label class="toolbar-select">
+          <span>Basemap</span>
+          <select id="basemap-select-map" aria-label="Pilih basemap peta">
+            <option value="google_hybrid" selected>Google Hybrid</option>
+            <option value="osm">OpenStreetMap</option>
+            <option value="google_sat">Google Satellite</option>
+            <option value="google_terrain">Google Terrain</option>
+            <option value="google_streets">Google Streets</option>
+          </select>
+        </label>
       </div>
 
-      <!-- FLOATING KAVLING DRAWING TOOLBAR -->
-      <div class="map-kavling-toolbar" id="map-kavling-toolbar">
-        <button type="button" class="kavling-tool-btn primary" id="btn-draw-kavling" title="Gambar poligon kavling di peta untuk memotong segmen zona (Hijau, Kuning, Merah) &amp; hitung sudut lereng (β°)">
-          <span>✏️ Gambar Poligon Kavling</span>
-        </button>
-        <button type="button" class="kavling-tool-btn demo" id="btn-demo-kavling" title="Uji sampel poligon kavling lintas 3 zona triase (Hijau, Kuning, Merah)">
-          <span>🧪 Sampel Kavling 3-Zona</span>
-        </button>
-        <button type="button" class="kavling-tool-btn danger" id="btn-reset-kavling-map" style="display:none;" title="Hapus Poligon / Reset Kavling">
-          <span>🗑️ Reset Kavling</span>
-        </button>
+      <div class="map-coord-bar" role="status" aria-live="off">
+        <span class="coord-item">
+          <span class="coord-label">WGS 84 · EPSG:4326</span>
+          <span class="mono" id="coord-wgs">-7.71670°, 110.41860°</span>
+        </span>
+        <span class="coord-sep" aria-hidden="true"></span>
+        <span class="coord-item">
+          <span class="coord-label">UTM 49S · EPSG:32749</span>
+          <span class="mono" id="coord-utm">X: 435.865,0 mE · Y: 9.146.908,0 mS</span>
+        </span>
       </div>
 
-      <!-- FLOATING LAYER CONTROLLER (DENGAN CUSTOM THIN SCROLLBAR & OPACITY SLIDERS 10% - 100%) -->
-      <div class="map-layer-switcher" id="map-layer-switcher">
-        <button type="button" class="layer-switcher-toggle" id="btn-toggle-layer-panel" title="Pilih Layer Peta Spasial &amp; Atur Transparansi">
-          <span>🗂️ Layer Spasial &amp; Opacity</span>
-          <span class="chevron" id="layer-switcher-chevron">▾</span>
-        </button>
-        <div class="layer-switcher-body custom-thin-scrollbar" id="layer-switcher-body" data-panel="layer-spasial">
-          <div class="layer-switcher-subtitle">Layer Tematik Geoteknik (Opacity 10%–100%)</div>
+      <details class="map-legend-panel" id="map-legend-panel">
+        <summary>Legenda</summary>
+        <div class="map-legend" id="map-legend"></div>
+      </details>
 
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-kerawanan-longsor" data-layer-key="kerawananLongsor" />
-              <span>⚠️ Peta Skoring Kerawanan Longsor (GPKG)</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-kerawananLongsor" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="kerawananLongsor" />
-              <b id="opacity-lbl-kerawananLongsor">65%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-lereng-poly" data-layer-key="lerengPoly" />
-              <span>⛰️ Kemiringan Lereng (DEMNAS)</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-lerengPoly" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="lerengPoly" />
-              <b id="opacity-lbl-lerengPoly">65%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-geologi" data-layer-key="geologi" />
-              <span>🪨 Litologi &amp; Formasi Geologi</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-geologi" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="geologi" />
-              <b id="opacity-lbl-geologi">60%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-tanah" data-layer-key="tanah" />
-              <span>🌱 Karakteristik Tanah (Pedologi)</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-tanah" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="tanah" />
-              <b id="opacity-lbl-tanah">60%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-hujan" data-layer-key="idwHujan" />
-              <span>🌧️ Curah Hujan Tahunan (Isohyet)</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-idwHujan" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="idwHujan" />
-              <b id="opacity-lbl-idwHujan">60%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-tutupan" data-layer-key="tutupan" />
-              <span>🏡 Tutupan Lahan (RBI 25K)</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-tutupan" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="60" data-opacity-key="tutupan" />
-              <b id="opacity-lbl-tutupan">60%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-admin" data-layer-key="admin" />
-              <span>🗺️ Garis Batas Administrasi Kalurahan</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-admin" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="75" data-opacity-key="admin" />
-              <b id="opacity-lbl-admin">75%</b>
-            </div>
-          </div>
-
-          <div class="layer-switcher-divider"></div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-titik-dev" data-layer-key="titikDev" />
-              <span>📍 Titik Uji Sampel Developer</span>
-            </label>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-area-dev" data-layer-key="areaDev" />
-              <span>⭕ Radius Jangkauan Uji (500m)</span>
-            </label>
-            <div class="layer-opacity-row" id="opacity-wrap-areaDev" style="display:none;">
-              <span>Opacity</span>
-              <input type="range" min="10" max="100" step="5" value="50" data-opacity-key="areaDev" />
-              <b id="opacity-lbl-areaDev">50%</b>
-            </div>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-pos-hujan" data-layer-key="posHujan" />
-              <span>💧 Pos Pengamatan Hujan BBWS</span>
-            </label>
-          </div>
-
-          <div class="floating-layer-item">
-            <label class="layer-switch-item">
-              <input type="checkbox" id="chk-demnas" data-layer-key="demnas" />
-              <span>📐 Grid Tile DEMNAS UTM</span>
-            </label>
-          </div>
-        </div>
+      <div class="spk-map-badge" id="spk-map-badge" hidden>
+        <span class="spk-map-badge-dot" aria-hidden="true"></span>
+        <span id="spk-map-badge-text">SPK aktif</span>
       </div>
-
-      <!-- DYNAMIC LEGEND -->
-      <div class="map-legend" id="map-legend"></div>
     </section>
 
-    <!-- RIGHT SIDEBAR (Lebar 380px): DETAIL GEOTEKNIK, AUDIT TRAIL & BREAKDOWN SKOR -->
-    <aside class="sidebar-right glass-sidebar">
-      <div class="panel-scroll custom-thin-scrollbar" id="inspector-panel">
-        <!-- Diisi dinamis saat titik/kalurahan diklik atau poligon kavling digambar -->
+    <aside class="sidebar sidebar-right" id="sidebar-right" aria-label="Panel keputusan dan inspeksi geoteknik">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-eyebrow">Decision support</p>
+          <h2>Inspeksi &amp; analisis</h2>
+        </div>
+        <button type="button" class="icon-btn drawer-close" id="btn-close-inspector" aria-label="Tutup panel inspeksi">
+          <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <div class="panel-scroll custom-thin-scrollbar inspector-panel" id="inspector-panel">
+        <div class="panel-loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <p>Memuat panel analisis geoteknik…</p>
+        </div>
       </div>
     </aside>
 
   </main>
 
-  <!-- Leaflet + Leaflet-Geoman + Proj4js + Proj4Leaflet + Turf.js -->
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+
+  <div class="spk-overlay" id="spk-overlay" hidden>
+    <div class="spk-backdrop" id="spk-backdrop" aria-hidden="true"></div>
+    <aside class="spk-drawer" id="spk-drawer" role="dialog" aria-modal="true" aria-labelledby="spk-title" aria-describedby="spk-subtitle">
+      <header class="spk-header">
+        <div class="spk-header-copy">
+          <p class="panel-eyebrow">Spatial decision support</p>
+          <h2 id="spk-title">Analisis SPK</h2>
+          <p id="spk-subtitle">WLC, stabilitas lereng, pembatas spasial, dan keputusan pengguna.</p>
+        </div>
+        <button type="button" class="icon-btn spk-close" id="btn-close-spk" aria-label="Tutup analisis SPK">
+          <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="spk-progress" id="spk-progress" aria-label="Tahapan analisis"></div>
+      <div class="spk-scroll custom-thin-scrollbar" id="spk-body"></div>
+    </aside>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
-  <!-- Pre-bundled GeoJSON Data -->
   <script src="geojson_bundle.js"></script>
-  <!-- Main Application Script -->
+  <script src="modules/spk-engine.js"></script>
+  <script src="modules/spatial-constraints.js"></script>
+  <script src="modules/development-recommendation.js"></script>
+  <script src="modules/land-use-information.js"></script>
+  <script src="modules/sensitive-areas.js"></script>
+  <script src="modules/spk-store.js"></script>
+  <script src="modules/spk-ui.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

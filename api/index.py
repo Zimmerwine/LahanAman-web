@@ -2,6 +2,7 @@ import json
 import math
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 
@@ -52,6 +53,131 @@ DATA_CACHE = {
     "tanah": [],
     "batuan": [],
     "hujan": [],
+    "land_use": [],
+}
+
+LAND_USE_FILE = "clean_tutupan_lahan_diy.geojson"
+LAND_USE_SOURCE = {
+    "id": "land-use-diy-rbi25k",
+    "title": "Layer5 Tata Guna Lahan (RBI 25K)",
+    "localFile": "public/data/clean_tutupan_lahan_diy.geojson",
+    "sourceDataset": "GPKG/GJS Layer5_Tata Guna Lahan (RBI 25K)",
+    "sourceInstitution": None,
+    "sourceUrl": None,
+    "sourceDate": None,
+    "sourceCrs": "EPSG:32749 (pipeline source), delivered as OGC:CRS84 / EPSG:4326",
+    "coverage": "Kab. Sleman, Kab. Bantul, Kota Yogyakarta; tidak mencakup seluruh wilayah DIY",
+    "verificationStatus": "source_metadata_incomplete",
+    "legalDesignationVerified": False,
+    "notes": [
+        "Nama kelas berasal dari atribut pl/klasifikasi sumber.",
+        "Institusi, versi, tanggal publikasi, dan lisensi sumber belum tercatat di aplikasi.",
+        "Label Hutan Lindung/Konservasi/Produksi bukan bukti batas atau status kawasan resmi.",
+    ],
+}
+
+LAND_USE_GROUP_LABELS = {
+    "hutan": "Tutupan hutan",
+    "pertanian": "Pertanian dan perkebunan",
+    "terbangun": "Permukiman dan infrastruktur",
+    "badan_air": "Badan air",
+    "lainnya": "Kelas lain",
+}
+
+LAND_USE_GROUPS = {
+    "Hutan Lindung": "hutan",
+    "Hutan Konservasi": "hutan",
+    "Hutan Produksi": "hutan",
+    "Kebun": "pertanian",
+    "Sawah Irigasi": "pertanian",
+    "Sawah Tadah Hujan": "pertanian",
+    "Tegalan/Ladang": "pertanian",
+    "Permukiman": "terbangun",
+    "Emplasemen": "terbangun",
+    "Industri": "terbangun",
+    "Bandara": "terbangun",
+    "Lapangan Olah Raga": "terbangun",
+    "Sungai": "badan_air",
+    "Danau/Waduk": "badan_air",
+    "Kolam Air Tawar": "badan_air",
+    "Tambak": "badan_air",
+    "Semak/Belukar": "lainnya",
+    "Rumput/Tanah Kosong": "lainnya",
+    "Makam": "lainnya",
+    "Candi Prambanan": "lainnya",
+}
+
+SENSITIVE_CLASS_RULES = {
+    "Hutan Lindung": {
+        "id": "forest_lindung_cover",
+        "category": "forest_cover",
+        "severity": "high",
+        "label": "Tutupan hutan lindung",
+        "message": "Kelas guna lahan Hutan Lindung teridentifikasi. Ini label tutupan lahan, bukan penetapan atau batas kawasan lindung resmi.",
+    },
+    "Hutan Konservasi": {
+        "id": "forest_konservasi_cover",
+        "category": "forest_cover",
+        "severity": "high",
+        "label": "Tutupan hutan konservasi",
+        "message": "Kelas guna lahan Hutan Konservasi teridentifikasi. Status dan batas kawasan konservasi resmi belum diverifikasi.",
+    },
+    "Hutan Produksi": {
+        "id": "forest_produksi_cover",
+        "category": "forest_cover",
+        "severity": "low",
+        "label": "Tutupan hutan produksi",
+        "message": "Kelas guna lahan Hutan Produksi teridentifikasi. Kelas ini bukan penetapan kawasan lindung.",
+    },
+    "Candi Prambanan": {
+        "id": "cultural_candi_prambanan",
+        "category": "cultural_object",
+        "severity": "high",
+        "label": "Objek budaya Candi Prambanan",
+        "message": "Objek budaya Candi Prambanan terpetakan sebagai kelas guna lahan. Zona perlindungan resmi dan batasnya belum tersedia.",
+    },
+    "Makam": {
+        "id": "cultural_makam",
+        "category": "cultural_land_use",
+        "severity": "low",
+        "label": "Guna lahan makam",
+        "message": "Guna lahan makam terpetakan. Status perlindungan budaya dan batas resminya belum tersedia.",
+    },
+    "Sungai": {
+        "id": "water_sungai",
+        "category": "water_body",
+        "severity": "medium",
+        "label": "Sungai",
+        "message": "Sungai terdeteksi dari kelas guna lahan. Garis sempadan resmi dan lebar buffer belum tersedia.",
+    },
+    "Danau/Waduk": {
+        "id": "water_danau_waduk",
+        "category": "water_body",
+        "severity": "medium",
+        "label": "Danau/waduk",
+        "message": "Danau/waduk terdeteksi dari kelas guna lahan. Sempadan resmi belum tersedia.",
+    },
+    "Kolam Air Tawar": {
+        "id": "water_kolam",
+        "category": "water_body",
+        "severity": "low",
+        "label": "Kolam air tawar",
+        "message": "Kolam air tawar terdeteksi dari kelas guna lahan. Status dan sempadan resmi belum tersedia.",
+    },
+    "Tambak": {
+        "id": "water_tambak",
+        "category": "water_body",
+        "severity": "low",
+        "label": "Tambak",
+        "message": "Tambak terdeteksi dari kelas guna lahan. Status dan sempadan resmi belum tersedia.",
+    },
+}
+
+SENSITIVE_CATEGORY_LABELS = {
+    "forest_cover": "Tutupan hutan",
+    "cultural_object": "Objek budaya",
+    "cultural_land_use": "Guna lahan budaya",
+    "water_body": "Badan air",
 }
 
 def _compute_geom_bbox(geom):
@@ -91,6 +217,388 @@ def _load_bundle_fallback():
         print(f"[API] Error loading fallback bundle: {e}")
     return {}
 
+
+_AREA_FACTOR_M2 = (111320.0 ** 2) * math.cos(math.radians(-7.8))
+
+
+def _round(value, digits=1):
+    return round(float(value), digits)
+
+
+def _polygonal_geometry(geom):
+    import shapely
+    from shapely.geometry import MultiPolygon, Polygon
+
+    if geom is None or geom.is_empty:
+        return None
+    if isinstance(geom, (Polygon, MultiPolygon)):
+        return geom if geom.area > 0 else None
+    if geom.geom_type == "GeometryCollection":
+        parts = [
+            part
+            for part in geom.geoms
+            if isinstance(part, (Polygon, MultiPolygon)) and not part.is_empty and part.area > 0
+        ]
+        if not parts:
+            return None
+        merged = shapely.union_all(parts)
+        return merged if not merged.is_empty and merged.area > 0 else None
+    return None
+
+
+def _union_geometry(geometries):
+    import shapely
+
+    valid = [geom for geom in geometries if geom is not None and not geom.is_empty]
+    if not valid:
+        return None
+    if len(valid) == 1:
+        return valid[0]
+    merged = shapely.union_all(valid)
+    return merged if not merged.is_empty else None
+
+
+def _load_land_use_dataset():
+    features = DATA_CACHE.get("land_use") or []
+    fpath = DATA_DIR / LAND_USE_FILE
+    available = bool(features)
+    last_modified = None
+    if fpath.exists():
+        last_modified = datetime.fromtimestamp(fpath.stat().st_mtime, tz=timezone.utc).isoformat()
+    source = dict(LAND_USE_SOURCE)
+    source["lastModifiedAt"] = last_modified
+    return {
+        "available": available,
+        "features": features,
+        "source": source,
+        "error": None if available else "Dataset guna lahan tidak tersedia atau gagal dimuat.",
+    }
+
+
+def _land_use_class(props):
+    value = str((props or {}).get("pl") or (props or {}).get("klasifikasi") or "").strip()
+    return value or "Tidak diketahui"
+
+
+def _land_use_feature_payload(feature, index, inter, class_name):
+    from shapely.geometry import mapping
+
+    props = feature.get("properties") or {}
+    area_m2 = inter.area * _AREA_FACTOR_M2
+    group = LAND_USE_GROUPS.get(class_name, "lainnya")
+    return {
+        "landUseId": f"LU-{index + 1:04d}",
+        "sourceFeatureIndex": index,
+        "className": class_name,
+        "group": group,
+        "groupLabel": LAND_USE_GROUP_LABELS.get(group, "Kelas lain"),
+        "areaM2": _round(area_m2),
+        "percentOfPolygon": None,
+        "sourceProperties": {
+            "kabupaten": props.get("kabupaten"),
+            "klasifikasi": props.get("klasifikasi"),
+            "skor_lahan": props.get("skor_lahan"),
+            "ket_lahan": props.get("ket_lahan"),
+            "cr_kpa": props.get("cr_kpa"),
+            "q_kpa": props.get("q_kpa"),
+            "warna_hex": props.get("warna_hex"),
+            "luas_ha": props.get("luas_ha"),
+        },
+        "geometry": mapping(inter),
+    }
+
+
+def build_land_use_report(user_poly, polygon_area_m2):
+    from shapely.geometry import shape
+
+    dataset = _load_land_use_dataset()
+    base = {
+        "status": "evaluated" if dataset["available"] else "not_evaluated",
+        "available": dataset["available"],
+        "dataset": dataset["source"],
+        "polygonAreaM2": _round(polygon_area_m2),
+        "coveredAreaM2": None,
+        "uncoveredAreaM2": None,
+        "coverageRatio": None,
+        "overlapAreaM2": None,
+        "classes": [],
+        "features": [],
+        "warnings": [],
+        "note": None,
+    }
+    if not dataset["available"]:
+        base["warnings"].append(dataset["error"])
+        base["note"] = "Penggunaan lahan belum dapat dievaluasi; ini bukan bukti tidak adanya penggunaan lahan."
+        return base
+
+    intersections = []
+    class_geometries = {}
+    class_feature_counts = {}
+    unsupported_geometry = 0
+    invalid_geometry = 0
+
+    for index, feature in enumerate(dataset["features"]):
+        if "_minx" in feature:
+            u_minx, u_miny, u_maxx, u_maxy = user_poly.bounds
+            if (
+                feature["_maxx"] < u_minx
+                or feature["_minx"] > u_maxx
+                or feature["_maxy"] < u_miny
+                or feature["_miny"] > u_maxy
+            ):
+                continue
+        geometry = feature.get("geometry")
+        if not geometry:
+            unsupported_geometry += 1
+            continue
+        try:
+            source_poly = shape(geometry)
+        except Exception:
+            invalid_geometry += 1
+            continue
+        if source_poly.geom_type not in ("Polygon", "MultiPolygon"):
+            unsupported_geometry += 1
+            continue
+        if not source_poly.is_valid:
+            import shapely
+
+            source_poly = shapely.make_valid(source_poly)
+            invalid_geometry += 1
+        source_poly = _polygonal_geometry(source_poly)
+        if source_poly is None:
+            continue
+        if not user_poly.intersects(source_poly):
+            continue
+        inter = _polygonal_geometry(user_poly.intersection(source_poly))
+        if inter is None or inter.area <= 0:
+            continue
+        class_name = _land_use_class(feature.get("properties"))
+        intersections.append((feature, index, inter, class_name))
+        class_geometries.setdefault(class_name, []).append(inter)
+        class_feature_counts[class_name] = class_feature_counts.get(class_name, 0) + 1
+
+    features_out = []
+    classes_out = []
+    covered_parts = []
+    class_area_total = 0.0
+    for feature, index, inter, class_name in intersections:
+        payload = _land_use_feature_payload(feature, index, inter, class_name)
+        payload["percentOfPolygon"] = (
+            _round((payload["areaM2"] / polygon_area_m2) * 100.0, 2)
+            if polygon_area_m2 > 0
+            else None
+        )
+        features_out.append(payload)
+        covered_parts.append(inter)
+
+    for class_name, geometries in class_geometries.items():
+        class_union = _union_geometry(geometries)
+        if class_union is None:
+            continue
+        area_m2 = class_union.area * _AREA_FACTOR_M2
+        class_area_total += area_m2
+        group = LAND_USE_GROUPS.get(class_name, "lainnya")
+        classes_out.append(
+            {
+                "className": class_name,
+                "group": group,
+                "groupLabel": LAND_USE_GROUP_LABELS.get(group, "Kelas lain"),
+                "featureCount": class_feature_counts.get(class_name, 0),
+                "areaM2": _round(area_m2),
+                "percentOfPolygon": _round((area_m2 / polygon_area_m2) * 100.0, 2)
+                if polygon_area_m2 > 0
+                else None,
+            }
+        )
+
+    classes_out.sort(key=lambda item: (-item["areaM2"], item["className"]))
+    covered_union = _union_geometry(covered_parts)
+    covered_area_m2 = covered_union.area * _AREA_FACTOR_M2 if covered_union is not None else 0.0
+    uncovered_area_m2 = max(float(polygon_area_m2) - covered_area_m2, 0.0)
+    overlap_area_m2 = max(class_area_total - covered_area_m2, 0.0)
+    coverage_ratio = (
+        min(max(covered_area_m2 / float(polygon_area_m2), 0.0), 1.0)
+        if polygon_area_m2 > 0
+        else None
+    )
+
+    base.update(
+        {
+            "coveredAreaM2": _round(covered_area_m2),
+            "uncoveredAreaM2": _round(uncovered_area_m2),
+            "coverageRatio": _round(coverage_ratio, 4) if coverage_ratio is not None else None,
+            "overlapAreaM2": _round(overlap_area_m2),
+            "classes": classes_out,
+            "features": features_out,
+        }
+    )
+
+    if not classes_out:
+        base["warnings"].append(
+            "Tidak ada poligon guna lahan yang beririsan dengan area analisis pada dataset yang tersedia."
+        )
+        base["note"] = (
+            "Area ini belum tercakup kelas guna lahan pada dataset. Ketiadaan kelas bukan bukti bahwa area tidak memiliki penggunaan lahan."
+        )
+    else:
+        base["note"] = (
+            "Sebaran guna lahan dihitung dari irisan poligon sumber; persentase memakai luas area analisis sebagai penyebut."
+        )
+        if overlap_area_m2 > 0.5:
+            base["warnings"].append(
+                f"Terdapat tumpang tindih geometri sumber sekitar {_round(overlap_area_m2)} m2. Luas per kelas dapat melebihi luas cakupan gabungan."
+            )
+        if coverage_ratio is not None and coverage_ratio < 0.8:
+            base["warnings"].append(
+                f"Cakupan guna lahan hanya {_round(coverage_ratio * 100.0, 1)}% dari area analisis; area yang tidak tercakup tidak boleh dianggap tanpa penggunaan lahan."
+            )
+    if unsupported_geometry:
+        base["warnings"].append(
+            f"{unsupported_geometry} fitur sumber bukan poligon dan tidak diikutkan dalam irisan areal."
+        )
+    if invalid_geometry:
+        base["warnings"].append(
+            f"{invalid_geometry} geometri sumber tidak valid dan diperbaiki sebelum irisan."
+        )
+    return base
+
+
+def build_sensitive_areas(land_use):
+    dataset = land_use.get("dataset") if land_use else None
+    available = bool(land_use and land_use.get("available"))
+    polygon_area_m2 = float((land_use or {}).get("polygonAreaM2") or 0.0)
+    base = {
+        "available": available,
+        "dataset": dataset,
+        "items": [],
+        "features": [],
+        "summary": {
+            "status": "not_evaluated",
+            "detected": False,
+            "itemCount": 0,
+            "featureCount": 0,
+            "categories": [],
+            "totalClassAreaM2": 0.0,
+            "uniqueAreaM2": 0.0,
+            "percentOfPolygon": None,
+            "legalDesignationVerified": False,
+            "officialBoundaryAvailable": False,
+            "note": "Objek/kawasan sensitif belum dapat dievaluasi.",
+        },
+    }
+    if not available:
+        base["summary"]["note"] = (
+            "Dataset guna lahan tidak tersedia; objek dan kawasan sensitif belum dapat dievaluasi. Ini bukan bukti bahwa lokasi bebas objek atau kawasan sensitif."
+        )
+        return base
+
+    grouped = {}
+    for feature in land_use.get("features") or []:
+        class_name = feature.get("className")
+        rule = SENSITIVE_CLASS_RULES.get(class_name)
+        if not rule:
+            continue
+        entry = grouped.setdefault(
+            rule["id"],
+            {
+                "rule": rule,
+                "className": class_name,
+                "geometries": [],
+                "features": [],
+                "featureCount": 0,
+            },
+        )
+        geometry = feature.get("geometry")
+        if not geometry:
+            continue
+        try:
+            from shapely.geometry import shape
+
+            geom = _polygonal_geometry(shape(geometry))
+        except Exception:
+            geom = None
+        if geom is None:
+            continue
+        entry["geometries"].append(geom)
+        entry["featureCount"] += 1
+        entry["features"].append(feature)
+
+    items = []
+    all_geometries = []
+    for entry in grouped.values():
+        merged = _union_geometry(entry["geometries"])
+        if merged is None:
+            continue
+        area_m2 = merged.area * _AREA_FACTOR_M2
+        all_geometries.append(merged)
+        rule = entry["rule"]
+        item = {
+            "id": rule["id"],
+            "label": rule["label"],
+            "category": rule["category"],
+            "categoryLabel": SENSITIVE_CATEGORY_LABELS.get(rule["category"], "Objek/kawasan"),
+            "severity": rule["severity"],
+            "status": "indication_detected",
+            "detected": True,
+            "binding": False,
+            "authoritative": False,
+            "legalDesignationVerified": False,
+            "geometryAvailable": True,
+            "sourceClass": entry["className"],
+            "featureCount": entry["featureCount"],
+            "areaM2": _round(area_m2),
+            "percentOfPolygon": _round((area_m2 / polygon_area_m2) * 100.0, 2)
+            if polygon_area_m2 > 0
+            else None,
+            "message": rule["message"],
+            "dataset": LAND_USE_SOURCE["localFile"],
+            "verification": "Batas/status resmi belum tersedia; verifikasi ke instansi berwenang.",
+        }
+        items.append(item)
+        for feature in entry["features"]:
+            base["features"].append(
+                {
+                    "sensitivityId": item["id"],
+                    "label": item["label"],
+                    "category": item["category"],
+                    "severity": item["severity"],
+                    "sourceClass": item["sourceClass"],
+                    "landUseId": feature.get("landUseId"),
+                    "areaM2": feature.get("areaM2"),
+                    "percentOfPolygon": feature.get("percentOfPolygon"),
+                    "geometry": feature.get("geometry"),
+                }
+            )
+
+    severity_rank = {"high": 3, "medium": 2, "low": 1}
+    items.sort(key=lambda item: (-severity_rank.get(item["severity"], 0), -item["areaM2"], item["label"]))
+    unique_union = _union_geometry(all_geometries)
+    unique_area_m2 = unique_union.area * _AREA_FACTOR_M2 if unique_union is not None else 0.0
+    total_class_area_m2 = sum(item["areaM2"] for item in items)
+    categories = sorted({item["categoryLabel"] for item in items})
+    detected = bool(items)
+    base["items"] = items
+    base["summary"] = {
+        "status": "indication_detected" if detected else "not_detected",
+        "detected": detected,
+        "itemCount": len(items),
+        "featureCount": sum(item["featureCount"] for item in items),
+        "categories": categories,
+        "totalClassAreaM2": _round(total_class_area_m2),
+        "uniqueAreaM2": _round(unique_area_m2),
+        "percentOfPolygon": _round((unique_area_m2 / polygon_area_m2) * 100.0, 2)
+        if polygon_area_m2 > 0
+        else None,
+        "legalDesignationVerified": False,
+        "officialBoundaryAvailable": False,
+        "note": (
+            "Objek/kawasan sensitif teridentifikasi dari kelas guna lahan pada area yang tercakup. Status dan batas resmi belum diverifikasi."
+            if detected
+            else "Tidak ada kelas sensitif yang teridentifikasi pada data guna lahan yang tersedia. Ini bukan verifikasi bahwa lokasi bebas objek atau kawasan sensitif."
+        ),
+    }
+    return base
+
 def load_processed_data():
     if DATA_CACHE["loaded"]:
         return
@@ -102,6 +610,7 @@ def load_processed_data():
         "tanah": "GJS Layer2_JenisTanah_SlemanBantul.geojson",
         "batuan": "GJS Layer3_Geologi_SlemanBantul.geojson",
         "hujan": "clean_curah_hujan_idw.geojson",
+        "land_use": LAND_USE_FILE,
     }
 
     bundle_cache = None
@@ -272,6 +781,16 @@ def calc_gpkg_score(s_lereng: int, s_tanah: int, s_batuan: int, s_hujan: int, s_
             "rekomendasi": "Risiko Tinggi / Rawan Longsor / Non-Buildable",
         }
 
+def read_spk_score(props: dict, field: str):
+    value = props.get(field)
+    if value is None or value == "":
+        return None
+    try:
+        score = int(value)
+    except (TypeError, ValueError):
+        return None
+    return score if 1 <= score <= 5 else None
+
 # =====================================================================
 # 4. UTILITAS GEOMETRI POINT-IN-POLYGON DENGAN BBOX PRE-FILTER & NEAREST
 # =====================================================================
@@ -365,37 +884,38 @@ def endpoint_query():
         bt_hit = find_feature_at_point(DATA_CACHE["batuan"], lng, lat, allow_nearest=False) or {}
         hj_hit = find_feature_at_point(DATA_CACHE["hujan"], lng, lat, allow_nearest=False) or {}
 
-        # Ekstraksi Nama Wilayah Administrasi (Dukung Uppercase & Lowercase, BEBAS DUMMY "-")
+        # Label wilayah selalu mengikuti layer administrasi resmi agar tidak
+        # tercemar atribusi yang salah pada layer tematik/pipeline.
         kalurahan = (
-            kr_hit.get("kalurahan")
-            or kr_hit.get("KALURAHAN")
-            or adm_hit.get("kalurahan")
+            adm_hit.get("kalurahan")
             or adm_hit.get("KALURAHAN")
+            or kr_hit.get("kalurahan")
+            or kr_hit.get("KALURAHAN")
             or "Mulyodadi"
         )
         if kalurahan == "-":
-            kalurahan = adm_hit.get("kalurahan") or "Mulyodadi"
+            kalurahan = kr_hit.get("kalurahan") or "Mulyodadi"
 
         kapanewon = (
-            kr_hit.get("kapanewon")
-            or kr_hit.get("KECAMATAN")
-            or adm_hit.get("kapanewon")
+            adm_hit.get("kapanewon")
             or adm_hit.get("KECAMATAN")
+            or kr_hit.get("kapanewon")
+            or kr_hit.get("KECAMATAN")
             or "Bambanglipuro"
         )
         if kapanewon == "-":
-            kapanewon = adm_hit.get("kapanewon") or "Bambanglipuro"
+            kapanewon = kr_hit.get("kapanewon") or "Bambanglipuro"
 
         kabupaten = (
-            kr_hit.get("kabupaten")
-            or kr_hit.get("KABUPATEN")
-            or adm_hit.get("kabupaten")
+            adm_hit.get("kabupaten")
             or adm_hit.get("KABUPATEN")
+            or kr_hit.get("kabupaten")
+            or kr_hit.get("KABUPATEN")
             or "Kab. Bantul"
         )
 
         label_wilayah = f"Kal. {kalurahan}, Kapanewon {kapanewon}, {kabupaten}"
-        elevasi = float(kr_hit.get("elevasi_mdpl") or adm_hit.get("elevasi_mdpl") or 115.0)
+        elevasi = float(adm_hit.get("elevasi_mdpl") or kr_hit.get("elevasi_mdpl") or 115.0)
 
         # PRIORITAS 1: Bila poligon master kerawanan longsor sudah memiliki kalkulasi resmi pipeline
         if kr_hit.get("skor_akhir") is not None:
@@ -602,13 +1122,24 @@ def endpoint_analisis():
         if not payload or "geometry" not in payload:
             return jsonify({"status": "error", "message": "Geometri poligon kosong."}), 400
 
-        user_poly = shp_shape(payload["geometry"])
+        geometry = payload["geometry"]
+        if not isinstance(geometry, dict) or geometry.get("type") not in ("Polygon", "MultiPolygon"):
+            return jsonify({
+                "status": "error",
+                "message": "Jenis geometri harus Polygon atau MultiPolygon.",
+            }), 400
+
+        user_poly = shp_shape(geometry)
         if not user_poly.is_valid:
             user_poly = shapely.make_valid(user_poly)
+        if user_poly.is_empty or user_poly.area <= 0:
+            return jsonify({"status": "error", "message": "Luas geometri poligon harus lebih dari nol."}), 400
 
         features_out = []
         seg_idx = 1
         total_area_deg = max(user_poly.area, 1e-12)
+        area_factor = (111320.0 ** 2) * math.cos(math.radians(-7.8))
+        polygon_area_m2 = round(total_area_deg * area_factor, 1)
         proporsi_zona = {
             "Hijau": {"luas_m2": 0.0, "persen": 0.0},
             "Kuning": {"luas_m2": 0.0, "persen": 0.0},
@@ -640,6 +1171,15 @@ def endpoint_analisis():
                 skor_h = int(p.get("skor_hujan", 3))
                 skor_lh = int(p.get("skor_lahan", 3))
                 skor_akhir = float(p.get("skor_akhir") or (0.30 * skor_l + 0.25 * skor_t + 0.20 * skor_b + 0.15 * skor_h + 0.10 * skor_lh))
+                spk_scores = {
+                    "slope": read_spk_score(p, "skor_lereng"),
+                    "soil": read_spk_score(p, "skor_tanah"),
+                    "geology": read_spk_score(p, "skor_batuan"),
+                    "rainfall": read_spk_score(p, "skor_hujan"),
+                    "landCover": read_spk_score(p, "skor_lahan"),
+                }
+                score_completeness = {key: value is not None for key, value in spk_scores.items()}
+                data_missing = [key for key, present in score_completeness.items() if not present]
 
                 if skor_akhir < 2.20:
                     kat = "Hijau"
@@ -697,6 +1237,16 @@ def endpoint_analisis():
                         "q_kpa": q_kpa,
                         "fs": fs_val,
                         "fs_label": fs_res["label"],
+                        "spk_scores": spk_scores,
+                        "score_completeness": score_completeness,
+                        "data_missing": data_missing,
+                        "spk_actual": {
+                            "slopeDeg": p.get("lereng_derajat"),
+                            "soilType": p.get("ket_tanah") or p.get("jns_tnh"),
+                            "geologyUnit": p.get("ket_batuan"),
+                            "rainfallMm": p.get("curah_hujan_mm"),
+                            "landCover": p.get("ket_lahan"),
+                        },
                     },
                     "geometry": mapping(inter),
                 })
@@ -704,16 +1254,24 @@ def endpoint_analisis():
 
         total_luas = round(sum(f["properties"]["luas_m2"] for f in features_out), 1)
         beta_mean_kavling = round(weighted_beta_sum / total_luas, 2) if total_luas > 0 else 2.5
+        land_use_report = build_land_use_report(user_poly, polygon_area_m2)
+        sensitive_area_report = build_sensitive_areas(land_use_report)
 
         return jsonify({
             "type": "FeatureCollection",
             "status": "ok",
             "summary": {
                 "total_luas_m2": total_luas,
+                "luas_poligon_m2": polygon_area_m2,
+                "persen_cakupan": round((total_luas / polygon_area_m2) * 100.0, 1) if polygon_area_m2 > 0 else 0.0,
                 "jumlah_segmen": len(features_out),
                 "beta_mean_kavling": beta_mean_kavling,
                 "proporsi_zona": proporsi_zona,
+                "land_use_coverage_ratio": land_use_report.get("coverageRatio"),
+                "sensitive_indication_count": sensitive_area_report.get("summary", {}).get("itemCount", 0),
             },
+            "land_use": land_use_report,
+            "sensitive_areas": sensitive_area_report,
             "features": features_out,
         }), 200
     except Exception as e:
