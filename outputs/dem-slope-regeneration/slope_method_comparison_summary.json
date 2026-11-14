@@ -1,0 +1,82 @@
+[
+  {
+    "method": "dominant_pixel_class",
+    "n": 905,
+    "mean": 2.334806629834254,
+    "median": 2.0,
+    "value_unit": "class_score",
+    "mean_absolute_difference_from_primary": null,
+    "score_matches_old_count_diagnostic_only": 883,
+    "score_differs_from_primary_count": 27
+  },
+  {
+    "method": "representative_point",
+    "n": 914,
+    "mean": 15.035471321004128,
+    "median": 12.517330646514893,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 2.15632562040139,
+    "score_matches_old_count_diagnostic_only": 790,
+    "score_differs_from_primary_count": 118
+  },
+  {
+    "method": "window_5x5_mean",
+    "n": 914,
+    "mean": 14.619146547771386,
+    "median": 12.190969467163086,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 1.8143519424770613,
+    "score_matches_old_count_diagnostic_only": 779,
+    "score_differs_from_primary_count": 130
+  },
+  {
+    "method": "window_9x9_mean",
+    "n": 914,
+    "mean": 13.963154515174077,
+    "median": 12.000115394592285,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 2.217651863051344,
+    "score_matches_old_count_diagnostic_only": 715,
+    "score_differs_from_primary_count": 206
+  },
+  {
+    "method": "zonal_mean_all_touched",
+    "n": 914,
+    "mean": 14.40747302061243,
+    "median": 11.283080446794258,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 0.5637256038576607,
+    "score_matches_old_count_diagnostic_only": 866,
+    "score_differs_from_primary_count": 38
+  },
+  {
+    "method": "zonal_mean_area_weighted",
+    "n": 68,
+    "mean": 16.30945498323035,
+    "median": 15.02965024443321,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 0.29199101312513115,
+    "score_matches_old_count_diagnostic_only": 49,
+    "score_differs_from_primary_count": 862
+  },
+  {
+    "method": "zonal_mean_pixel_center",
+    "n": 905,
+    "mean": 14.589063063229506,
+    "median": 11.482885726292928,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 0.0,
+    "score_matches_old_count_diagnostic_only": 880,
+    "score_differs_from_primary_count": 0
+  },
+  {
+    "method": "zonal_median_area_weighted",
+    "n": 68,
+    "mean": 16.173957237425974,
+    "median": 15.296006679534912,
+    "value_unit": "degrees",
+    "mean_absolute_difference_from_primary": 0.5845139579312749,
+    "score_matches_old_count_diagnostic_only": 57,
+    "score_differs_from_primary_count": 864
+  }
+]

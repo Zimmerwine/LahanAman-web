@@ -64,8 +64,8 @@
       </div>
     </div>
 
-    <div class="region-summary" aria-label="Ringkasan klasifikasi zona wilayah">
-      <span class="region-summary-label">Zona wilayah</span>
+    <div class="region-summary" aria-label="Ringkasan zona hasil agregasi wilayah administrasi">
+      <span class="region-summary-label" title="Jumlah satuan administrasi, bukan jumlah polygon kerawanan">Administrasi</span>
       <span class="summary-item summary-item--green"><span class="zone-dot"></span>Hijau <b id="stat-hijau">0</b></span>
       <span class="summary-item summary-item--yellow"><span class="zone-dot"></span>Kuning <b id="stat-kuning">0</b></span>
       <span class="summary-item summary-item--red"><span class="zone-dot"></span>Merah <b id="stat-merah">0</b></span>
@@ -180,12 +180,12 @@
               <div class="layer-item" id="sb-card-kerawananLongsor">
                 <div class="layer-row">
                   <label class="switch" aria-label="Aktifkan layer skoring kerawanan longsor">
-                    <input type="checkbox" id="chk-kerawanan-longsor" />
+                    <input type="checkbox" id="chk-kerawanan-longsor" checked />
                     <span class="switch-track"><span class="switch-thumb"></span></span>
                   </label>
                   <label class="layer-copy" for="chk-kerawanan-longsor">
                     <span class="layer-name">Skoring kerawanan longsor</span>
-                    <span class="layer-desc">Indeks GPKG · weighted overlay</span>
+                    <span class="layer-desc" id="kerawanan-feature-count">Indeks GPKG · weighted overlay</span>
                   </label>
                   <span class="layer-weight">Indeks</span>
                   <button type="button" class="layer-config-btn" data-layer-config="kerawananLongsor" aria-expanded="false" aria-label="Atur opasitas skoring kerawanan longsor">
@@ -194,8 +194,8 @@
                 </div>
                 <div class="layer-opacity" id="opacity-wrap-kerawananLongsor">
                   <span>Opasitas</span>
-                  <input type="range" min="10" max="100" step="5" value="65" data-opacity-key="kerawananLongsor" aria-label="Opasitas skoring kerawanan longsor" />
-                  <b id="opacity-lbl-kerawananLongsor">65%</b>
+                  <input type="range" min="10" max="100" step="5" value="35" data-opacity-key="kerawananLongsor" aria-label="Opasitas skoring kerawanan longsor" />
+                  <b id="opacity-lbl-kerawananLongsor">35%</b>
                 </div>
               </div>
 

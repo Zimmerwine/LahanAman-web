@@ -52,6 +52,11 @@ from rasterio.windows import Window
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
 
+try:
+    from .slope_classification import resolve_slope_degree
+except ImportError:
+    from slope_classification import resolve_slope_degree
+
 # Path Root Proyek
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "Data" / "raw"
@@ -554,17 +559,9 @@ def run_pipeline() -> None:
         # A. Lereng (30%)
         skor_l_raw = int(row.get("skor_lereng") or 1)
         s_sampled = kr_slopes[idx]
-        if s_sampled is not None:
-            # Jaga agar kemiringan konsisten dengan skor kelasnya
-            bounds_deg = {1: (0.5, 8.0), 2: (8.1, 15.0), 3: (15.1, 25.0), 4: (25.1, 35.0), 5: (35.1, 55.0)}
-            lo_b, hi_b = bounds_deg.get(skor_l_raw, (0.5, 45.0))
-            beta_deg = round(min(hi_b, max(lo_b, s_sampled)), 2)
-        else:
-            mid_map = {1: 3.5, 2: 11.5, 3: 20.0, 4: 30.0, 5: 38.0}
-            beta_deg = mid_map.get(skor_l_raw, 3.5)
+        beta_deg = resolve_slope_degree(s_sampled, skor_l_raw)
 
         skor_l, ket_l, slope_pct = eval_slope(beta_deg)
-        skor_l = skor_l_raw if 1 <= skor_l_raw <= 5 else skor_l
 
         # B. Tanah (25%)
         soil_name = str(row.get("ket_tanah") or row.get("jns_tnh") or "Regosol")

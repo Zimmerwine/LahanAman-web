@@ -53,6 +53,11 @@ from rasterio.windows import Window
 import shapely
 from shapely.geometry import MultiPolygon, Polygon
 
+try:
+    from .slope_classification import resolve_slope_degree
+except ImportError:
+    from slope_classification import resolve_slope_degree
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "Data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "Data" / "processed"
@@ -130,14 +135,6 @@ SOIL_MATRIX_DASAR_XLSX: Dict[str, Dict[str, Any]] = {
         "z": 4.0,
         "is_expansive": False,
     },
-}
-
-SLOPE_CLASS_MIDPOINT_DEG = {
-    1: 3.5,
-    2: 11.5,
-    3: 20.0,
-    4: 30.0,
-    5: 38.0,
 }
 
 # Daftar atribut esensial per layer (menghapus atribut non-esensial & dusun/OSM)
@@ -591,7 +588,7 @@ def sample_demnas_for_polygons(gdf_utm: gpd.GeoDataFrame) -> List[Dict[str, Opti
                 win = Window(c0, r0, c1 - c0, r1 - r0)
                 arr_s = src_slp.read(1, window=win).astype(float)
                 arr_d = src_dem.read(1, window=win).astype(float)
-                arr_s[(arr_s <= -999.0) | np.isnan(arr_s)] = np.nan
+                arr_s[(arr_s < 0.0) | (arr_s >= 90.0) | np.isnan(arr_s)] = np.nan
                 arr_d[(arr_d <= 0.0) | (arr_d <= -999.0) | np.isnan(arr_d)] = np.nan
 
                 beta_val = float(np.nanmean(arr_s)) if not np.isnan(arr_s).all() else None
@@ -771,18 +768,10 @@ def process_layer(
         elif filename == "clean_kerawanan_longsor.geojson":
             sample = demnas_samples[idx] if demnas_samples else {}
             skor_l_poly = int(p.get("skor_lereng") or 1)
-            beta_deg = sample.get("beta_deg")
-            if beta_deg is None:
-                beta_deg = SLOPE_CLASS_MIDPOINT_DEG.get(skor_l_poly, 3.5)
-            else:
-                # Jaga agar nilai lereng hasil sampling tetap konsisten dengan kelas poligon DEMNAS-nya
-                bounds_deg = {1: (0.2, 8.0), 2: (8.1, 15.0), 3: (15.1, 25.0), 4: (25.1, 35.0), 5: (35.1, 55.0)}
-                lo_b, hi_b = bounds_deg.get(skor_l_poly, (0.2, 55.0))
-                beta_deg = round(min(hi_b, max(lo_b, float(beta_deg))), 2)
+            beta_deg = resolve_slope_degree(sample.get("beta_deg"), skor_l_poly)
 
             lereng_pct = round(math.tan(math.radians(beta_deg)) * 100.0, 2)
             skor_l, ket_l = eval_slope_score(beta_deg)
-            skor_l = skor_l_poly if 1 <= skor_l_poly <= 5 else skor_l
 
             soil_info = eval_soil_params(p.get("ket_tanah") or p.get("jenis_tanah"), soil_matrix)
             skor_t = soil_info["skor"]

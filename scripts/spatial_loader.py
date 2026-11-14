@@ -23,7 +23,6 @@ import numpy as np
 import openpyxl
 import pandas as pd
 import rasterio
-from rasterio.crs import CRS
 from rasterio.windows import Window
 import shapely
 
@@ -131,21 +130,27 @@ def cari_folder_rbi():
 # =====================================================================
 def cari_demnas_utm_tifs():
     """
-    Cari seluruh file GeoTIFF DEMNAS DIY UTM yang sudah diekstrak di
-    `Data/raw/extracted/Demnas Jogja UTM` dan pastikan header CRS-nya EPSG:32749.
+    Cari GeoTIFF DEMNAS DIY yang header CRS-nya sudah EPSG:32749.
+
+    File dengan CRS hilang atau berbeda dilewati. Menetapkan CRS pada header
+    tanpa mentransformasi piksel akan menggeser interpretasi lokasi raster.
     """
     tifs = sorted(Path(p) for p in glob.glob(str(DEMNAS_UTM_DIR / "**" / "*.tif"), recursive=True))
-    crs_32749 = CRS.from_epsg(32749)
+    valid_tifs = []
     for tif in tifs:
         try:
             with rasterio.open(tif) as src:
-                perlu_update = (src.crs is None or src.crs.to_epsg() != 32749)
-            if perlu_update:
-                with rasterio.open(tif, "r+") as dst:
-                    dst.crs = crs_32749
-        except Exception:
-            pass
-    return tifs
+                epsg = src.crs.to_epsg() if src.crs is not None else None
+            if epsg == 32749:
+                valid_tifs.append(tif)
+            else:
+                warnings.warn(
+                    f"{tif.name}: raster dilewati karena CRS {epsg or 'tidak diketahui'}; "
+                    "file sumber tidak diubah."
+                )
+        except Exception as exc:
+            warnings.warn(f"{tif.name}: raster tidak dapat dibaca dan dilewati ({exc}).")
+    return valid_tifs
 
 
 def sampling_demnas_utm(x_arr, y_arr, radius_m=250.0):

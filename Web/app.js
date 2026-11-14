@@ -134,7 +134,7 @@
     polyOpacity: 0.55,
     showAdminOutlines: false,
     layerOpacities: {
-      kerawananLongsor: 0.65,
+      kerawananLongsor: 0.35,
       lerengPoly: 0.65,
       geologi: 0.60,
       tanah: 0.60,
@@ -234,19 +234,21 @@
     let label = "0° – 8° (0% – 14,1% | Datar – Landai)";
     let deskripsi = "Gaya gravitasi vertikal mengikat massa tanah, zona aman konstruksi standar";
 
-    if (deg > 35.0 || pct > 70.0) {
+    // Derajat adalah nilai klasifikasi utama. Persentase turunan yang dibulatkan
+    // dapat melewati ambang tabel sedikit lebih awal (mis. 25° menjadi 46,63%).
+    if (deg > 35.0) {
       skor = 5;
       label = ">35° (>70,0% | Sangat Terjal / Ekstrem)";
       deskripsi = "Lereng ekstrem melampaui sudut geser dalam tanah, zona Non-Buildable";
-    } else if (deg > 25.0 || pct > 46.6) {
+    } else if (deg > 25.0) {
       skor = 4;
       label = ">25° – 35° (46,6% – 70,0% | Sangat Curam)";
       deskripsi = "Berimpit sudut geser batupasir lapuk, tegangan geser gravitasi tinggi";
-    } else if (deg > 15.0 || pct > 26.8) {
+    } else if (deg > 15.0) {
       skor = 3;
       label = ">15° – 25° (26,8% – 46,6% | Curam / Kritis)";
       deskripsi = "Kritis, berimpit sudut geser efektif lempung Formasi Semilir";
-    } else if (deg > 8.0 || pct > 14.1) {
+    } else if (deg > 8.0) {
       skor = 2;
       label = ">8° – 15° (14,1% – 26,8% | Landai – Miring / Transisi)";
       deskripsi = "Zona transisi morfologi miring, perlu penataan drainase lereng";
@@ -2329,8 +2331,8 @@
         <div class="spinner"></div>
         <div class="kavling-loading-title">Memproses segmentasi kavling</div>
         <div class="kavling-loading-text">
-          Poligon dipotong terhadap zona kerawanan GPKG, lalu dihitung kemiringan
-          DEMNAS dan Faktor Keamanan infinite slope per segmen.
+          Poligon dioverlay dengan kelas kerawanan tersimpan. Ringkasan lereng dan FS
+          memakai atribut GeoJSON; jalur ini tidak mengambil sampel raster per segmen.
         </div>
       </div>
     `;
@@ -2476,6 +2478,10 @@
             ${cakupanRendah ? "Sebagian poligon tidak tercakup layer kerawanan. Area yang tidak tercakup tidak boleh dianggap aman." : "Cakupan layer kerawanan memadai untuk evaluasi awal."}
           </div>
         </div>
+        </div>
+
+        <div class="kavling-coverage-note is-low">
+          Nilai slope dan FS berasal dari atribut serta model tersimpan. Analisis ini tidak mengambil sampel raster DEM/slope per segmen; hasil FS bukan validasi geoteknik lapangan.
         </div>
 
         <div class="kavling-kpis">
@@ -2879,7 +2885,11 @@
   }
 
   async function fetchGeoJSON(filename) {
-    if (window.LAHAN_AMAN_GEOJSON && window.LAHAN_AMAN_GEOJSON[filename]) {
+    if (
+      filename !== "clean_kerawanan_longsor.geojson" &&
+      window.LAHAN_AMAN_GEOJSON &&
+      window.LAHAN_AMAN_GEOJSON[filename]
+    ) {
       return window.LAHAN_AMAN_GEOJSON[filename];
     }
     if (filename === "clean_tutupan_lahan_diy.geojson" || filename === "clean_tutupan_lahan_sleman_bantul.geojson") {
@@ -2980,7 +2990,7 @@
       state.tanahFeatures = tanahPolyData ? tanahPolyData.features || [] : [];
 
       try {
-        const krData = await fetchGeoJSON("clean_kerawanan_longsor.geojson");
+        const krData = await fetchGeoJSON("clean_kerawanan_longsor_display.geojson");
         state.kerawananFeatures = krData ? krData.features || [] : [];
       } catch (_ekr) {
         state.kerawananFeatures = [];
@@ -3210,6 +3220,10 @@
       inisialisasiFilterHierarkis();
       renderEmptyStateSidebar();
       updateLegend();
+      const chkKerawananDefault = document.getElementById("chk-kerawanan-longsor");
+      if (chkKerawananDefault && chkKerawananDefault.checked) {
+        await toggleKerawananLongsor(true);
+      }
       setLoading(null);
     } catch (err) {
       console.error(err);
@@ -3234,17 +3248,37 @@
     }
     try {
       setLoading("⏳ Memuat Peta Skoring Kerawanan Longsor (GPKG)...");
-      const data = await fetchGeoJSON("clean_kerawanan_longsor.geojson");
+      const data = state.kerawananFeatures.length
+        ? { type: "FeatureCollection", features: state.kerawananFeatures }
+        : await fetchGeoJSON("clean_kerawanan_longsor_display.geojson");
       state.kerawananFeatures = data.features || [];
+      const isPolygonFeature = (feature) => {
+        const geometryType = feature.geometry && feature.geometry.type;
+        return geometryType === "Polygon" || geometryType === "MultiPolygon";
+      };
+      const polygonFeatures = state.kerawananFeatures.filter(isPolygonFeature);
+      const redCount = polygonFeatures.filter((feature) => {
+        const props = feature.properties || {};
+        return /MERAH/.test(String(props.zona_triase || props.status_zona || "").toUpperCase());
+      }).length;
+      const countLabel = document.getElementById("kerawanan-feature-count");
+      if (countLabel) {
+        const nonPolygonCount = state.kerawananFeatures.length - polygonFeatures.length;
+        countLabel.textContent = polygonFeatures.length + " poligon · Merah " + redCount;
+        countLabel.title = polygonFeatures.length + " fitur poligon kerawanan; " + redCount + " berlabel Zona Merah; " + nonPolygonCount + " geometri bukan poligon. Hitungan header menunjukkan administrasi.";
+      }
       state.layers.kerawananLongsor = buatLayerGeoJsonUTM(data, {
         renderer: canvasRenderer,
         interactive: true,
         style: (feature) => {
           const fp = feature.properties || {};
+          const type = feature.geometry && feature.geometry.type;
+          const isPolygon = type === "Polygon" || type === "MultiPolygon";
+          const fillColor = fp.warna_hex || "#2E7D32";
           return {
-            fillColor: fp.warna_hex || "#2E7D32",
-            color: fp.border_hex || "#1e293b",
-            weight: 0.9,
+            fillColor,
+            color: isPolygon ? (fp.border_hex || "#1e293b") : fillColor,
+            weight: isPolygon ? 0.9 : 2.5,
             fillOpacity: state.layerOpacities.kerawananLongsor,
           };
         },
