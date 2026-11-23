@@ -19,18 +19,18 @@ class KerawananDisplayTests(unittest.TestCase):
         self.assertEqual(len(self.data["features"]), len(source["features"]))
         self.assertEqual(self.app_data, self.data)
         self.assertEqual(len(self.report["red_feature_audit"]), 230)
-        self.assertEqual(self.report["red_displayable_polygon_count"], 229)
+        self.assertEqual(self.report["red_displayable_polygon_count"], 230)
 
     def test_polygon_display_geometries_are_valid_without_converting_lines(self):
         lines = []
         for feature in self.data["features"]:
             geom = shape(feature["geometry"])
             props = feature["properties"]
-            if geom.geom_type in {"Polygon", "MultiPolygon"}:
-                self.assertTrue(geom.is_valid)
+            self.assertIn(geom.geom_type, {"Polygon", "MultiPolygon"})
+            self.assertTrue(geom.is_valid)
             if props.get("_display_geometry_original_type") == "LineString":
                 lines.append(geom.geom_type)
-        self.assertEqual(lines, ["LineString"])
+        self.assertEqual(lines, [])
 
     def test_source_is_not_rewritten(self):
         report = json.loads(display.REPORT.read_text(encoding="utf-8"))

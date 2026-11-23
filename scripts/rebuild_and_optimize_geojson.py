@@ -765,17 +765,17 @@ def process_and_optimize_geojson(
 
     if filename == "clean_kerawanan_longsor.geojson":
         gdf_utm["geometry"] = [
-            clean_multipolygon_utm(g, min_part_m2=28000.0, min_hole_m2=35000.0)
+            clean_multipolygon_utm(g, min_part_m2=0.0, min_hole_m2=0.0)
             for g in gdf_utm.geometry
         ]
     elif filename in {"clean_tutupan_lahan_diy.geojson", "clean_tutupan_lahan_sleman_bantul.geojson"}:
         gdf_utm["geometry"] = [
-            clean_multipolygon_utm(g, min_part_m2=100.0, min_hole_m2=250.0)
+            clean_multipolygon_utm(g, min_part_m2=0.0, min_hole_m2=0.0)
             for g in gdf_utm.geometry
         ]
     elif filename == "clean_kemiringan_lereng_diy.geojson":
         gdf_utm["geometry"] = [
-            clean_multipolygon_utm(g, min_part_m2=2500.0, min_hole_m2=5000.0)
+            clean_multipolygon_utm(g, min_part_m2=0.0, min_hole_m2=0.0)
             for g in gdf_utm.geometry
         ]
 

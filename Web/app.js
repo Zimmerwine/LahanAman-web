@@ -2105,23 +2105,11 @@
     }).addTo(state.kavlingOutlineGroup);
   }
 
-  function setSpkLayerControlState(key, available, reason) {
-    const checkbox = document.getElementById("chk-spk-" + (key === "landUse" ? "land-use" : key));
-    const card = document.querySelector('[data-spk-layer-card="' + key + '"]');
-    if (checkbox) {
-      checkbox.disabled = !available;
-      if (!available) checkbox.checked = false;
-      checkbox.title = available ? "" : reason || "Layer belum tersedia.";
-    }
-    if (card) {
-      card.classList.toggle("is-unavailable", !available);
-      card.classList.remove("is-active");
-    }
-  }
-
   function clearSpkSpatialLayers() {
-    state.spkLandUseGroup.clearLayers();
-    if (map.hasLayer(state.spkLandUseGroup)) map.removeLayer(state.spkLandUseGroup);
+    if (state.spkLandUseGroup) {
+      state.spkLandUseGroup.clearLayers();
+      if (map.hasLayer(state.spkLandUseGroup)) map.removeLayer(state.spkLandUseGroup);
+    }
     state.spkLandUseReport = null;
     if (state.activeLegendMode === "spk-land-use") {
       state.activeLegendMode =
@@ -2129,7 +2117,6 @@
       state.spkSpatialLegendBefore = null;
       updateLegend();
     }
-    setSpkLayerControlState("landUse", false, "Tersedia setelah analisis kavling.");
   }
 
   function renderSpkSpatialLayers(data) {
@@ -2137,68 +2124,7 @@
     if (!data) return;
     const landUseApi = window.LahanAmanLandUse;
     if (!landUseApi) return;
-
-    const landUse = landUseApi.normalize(data.land_use);
-    state.spkLandUseReport = landUse;
-    landUse.features.forEach((feature) => {
-      if (!feature.geometry) return;
-      const layer = L.geoJSON(feature.geometry, {
-        pane: "spkLandUsePane",
-        renderer: spkLandUseRenderer,
-        style: () => landUseApi.styleForFeature(feature, 0.3),
-      });
-      const tooltip =
-        "<b>" +
-        feature.className +
-        "</b><br>" +
-        landUseApi.formatArea(feature.areaM2) +
-        " · " +
-        landUseApi.formatPercent(feature.percentOfPolygon) +
-        " poligon";
-      layer.bindTooltip(tooltip, { sticky: true });
-      state.spkLandUseGroup.addLayer(layer);
-    });
-    const hasLandUse = landUse.features.length > 0;
-    setSpkLayerControlState(
-      "landUse",
-      hasLandUse,
-      "Tidak ada geometri guna lahan pada area analisis."
-    );
-  }
-
-  function toggleSpkLayer(key, checked) {
-    if (key !== "landUse") return;
-    const group = state.spkLandUseGroup;
-    if (!group) return;
-    const card = document.querySelector('[data-spk-layer-card="' + key + '"]');
-    const legendMode = "spk-land-use";
-    if (checked && group.getLayers().length) {
-      group.addTo(map);
-      if (card) card.classList.add("is-active");
-      if (legendMode) {
-        if (state.activeLegendMode !== "spk-land-use") {
-          state.spkSpatialLegendBefore = state.activeLegendMode;
-        }
-        state.activeLegendMode = legendMode;
-        updateLegend();
-      }
-    } else {
-      if (map.hasLayer(group)) map.removeLayer(group);
-      if (card) card.classList.remove("is-active");
-      if (checked) {
-        const checkbox = document.getElementById("chk-spk-land-use");
-        if (checkbox) checkbox.checked = false;
-      }
-      if (legendMode && state.activeLegendMode === legendMode) {
-        if (state.spkSpatialLegendBefore) {
-          state.activeLegendMode = state.spkSpatialLegendBefore;
-          state.spkSpatialLegendBefore = null;
-        } else {
-          state.activeLegendMode = state.spkAssessment ? "spk" : "triase";
-        }
-        updateLegend();
-      }
-    }
+    state.spkLandUseReport = landUseApi.normalize(data.land_use);
   }
 
   function resetSpkMapState() {
@@ -3680,15 +3606,6 @@
       toggleTutupanLahan(e.target.checked);
     });
   }
-
-  // Checkbox Layer Informasi SPK
-  document.querySelectorAll("[data-spk-layer]").forEach((el) => {
-    el.addEventListener("change", (e) => {
-      const key = e.target.getAttribute("data-spk-layer");
-      toggleSpkLayer(key, e.target.checked);
-      perbaruiJumlahLayerAktif();
-    });
-  });
 
   // Checkbox Layer Spasial lainnya
   const overlayToggles = [

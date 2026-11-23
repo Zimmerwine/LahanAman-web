@@ -1,4 +1,4 @@
-﻿import math
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -38,14 +38,14 @@ class SPKApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["status"], "ok")
-        self.assertEqual(len(payload["features"]), 3)
+        self.assertEqual(len(payload["features"]), 9)
 
         summary = payload["summary"]
-        self.assertAlmostEqual(summary["total_luas_m2"], 23814.0, places=1)
+        self.assertAlmostEqual(summary["total_luas_m2"], 90826.2, places=1)
         self.assertAlmostEqual(summary["luas_poligon_m2"], 90833.2, places=1)
-        self.assertAlmostEqual(summary["persen_cakupan"], 26.2, places=1)
-        self.assertEqual(summary["jumlah_segmen"], 3)
-        self.assertAlmostEqual(summary["beta_mean_kavling"], 10.17, places=2)
+        self.assertAlmostEqual(summary["persen_cakupan"], 100.0, places=1)
+        self.assertEqual(summary["jumlah_segmen"], 9)
+        self.assertAlmostEqual(summary["beta_mean_kavling"], 10.67, places=2)
         self.assertGreater(summary["land_use_coverage_ratio"], 0.99)
         self.assertEqual(summary["sensitive_indication_count"], 0)
 
@@ -183,7 +183,7 @@ class SPKApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertTrue(math.isclose(payload["summary"]["luas_poligon_m2"], 90833.2, abs_tol=0.2))
-        self.assertEqual(payload["summary"]["jumlah_segmen"], 3)
+        self.assertEqual(payload["summary"]["jumlah_segmen"], 9)
 
 
 if __name__ == "__main__":
