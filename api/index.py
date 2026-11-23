@@ -180,24 +180,32 @@ SENSITIVE_CATEGORY_LABELS = {
     "water_body": "Badan air",
 }
 
-def _compute_geom_bbox(geom):
-    if not geom or "coordinates" not in geom:
-        return None
-    coords = geom.get("coordinates", [])
+def _collect_polygonal_coords(geom, xs, ys):
+    if not geom or not isinstance(geom, dict):
+        return
     g_type = geom.get("type")
-    xs, ys = [], []
-    try:
-        if g_type == "Polygon":
-            for ring in coords:
+    if g_type == "Polygon":
+        for ring in geom.get("coordinates", []):
+            for pt in ring:
+                xs.append(pt[0])
+                ys.append(pt[1])
+    elif g_type == "MultiPolygon":
+        for poly in geom.get("coordinates", []):
+            for ring in poly:
                 for pt in ring:
                     xs.append(pt[0])
                     ys.append(pt[1])
-        elif g_type == "MultiPolygon":
-            for poly in coords:
-                for ring in poly:
-                    for pt in ring:
-                        xs.append(pt[0])
-                        ys.append(pt[1])
+    elif g_type == "GeometryCollection":
+        for sub in geom.get("geometries", []):
+            _collect_polygonal_coords(sub, xs, ys)
+
+
+def _compute_geom_bbox(geom):
+    if not geom or not isinstance(geom, dict):
+        return None
+    xs, ys = [], []
+    try:
+        _collect_polygonal_coords(geom, xs, ys)
         if xs and ys:
             return (min(xs), min(ys), max(xs), max(ys), sum(xs) / len(xs), sum(ys) / len(ys))
     except Exception:
@@ -807,9 +815,16 @@ def point_in_ring(x: float, y: float, ring: list) -> bool:
     return inside
 
 def point_in_geometry(x: float, y: float, geom: dict) -> bool:
-    if not geom or "coordinates" not in geom:
+    if not geom or not isinstance(geom, dict):
         return False
     g_type = geom.get("type")
+    if g_type == "GeometryCollection":
+        for sub in geom.get("geometries", []):
+            if point_in_geometry(x, y, sub):
+                return True
+        return False
+    if "coordinates" not in geom:
+        return False
     coords = geom.get("coordinates", [])
     if g_type == "Polygon":
         if not coords or not point_in_ring(x, y, coords[0]):
@@ -883,6 +898,8 @@ def endpoint_query():
         tn_hit = find_feature_at_point(DATA_CACHE["tanah"], lng, lat, allow_nearest=False) or {}
         bt_hit = find_feature_at_point(DATA_CACHE["batuan"], lng, lat, allow_nearest=False) or {}
         hj_hit = find_feature_at_point(DATA_CACHE["hujan"], lng, lat, allow_nearest=False) or {}
+        lu_hit = find_feature_at_point(DATA_CACHE["land_use"], lng, lat, allow_nearest=False) or {}
+        lu_name = str(lu_hit.get("pl") or lu_hit.get("tutupan_lahan") or lu_hit.get("klasifikasi") or "").strip()
 
         # Label wilayah selalu mengikuti layer administrasi resmi agar tidak
         # tercemar atribusi yang salah pada layer tematik/pipeline.
@@ -1029,7 +1046,7 @@ def endpoint_query():
             curah_hujan_mm = float(hj_hit.get("curah_hujan_mm") or 2250.0)
             rain_info = get_rain_params(curah_hujan_mm)
 
-            tutupan_lahan = "Permukiman"
+            tutupan_lahan = lu_name or "Permukiman"
             land_info = get_land_params(tutupan_lahan, beta_deg)
 
             skor_l = slope_info["skor"]
@@ -1155,10 +1172,18 @@ def endpoint_analisis():
                 if feat["_maxx"] < u_minx or feat["_minx"] > u_maxx or feat["_maxy"] < u_miny or feat["_miny"] > u_maxy:
                     continue
 
-            kr_poly = shp_shape(feat["geometry"])
+            try:
+                kr_poly = shp_shape(feat["geometry"])
+            except Exception:
+                continue
+            if not kr_poly.is_valid:
+                kr_poly = shapely.make_valid(kr_poly)
+            kr_poly = _polygonal_geometry(kr_poly)
+            if kr_poly is None:
+                continue
             if user_poly.intersects(kr_poly):
-                inter = user_poly.intersection(kr_poly)
-                if inter.is_empty or inter.area <= 0:
+                inter = _polygonal_geometry(user_poly.intersection(kr_poly))
+                if inter is None or inter.is_empty or inter.area <= 0:
                     continue
 
                 p = feat.get("properties", {})

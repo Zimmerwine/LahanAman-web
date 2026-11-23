@@ -20,6 +20,22 @@
     lainnya: "#7C3AED",
   });
 
+  const CLASS_COLORS = Object.freeze({
+    "Hutan Lindung": "#1B5E20",
+    "Hutan Konservasi": "#1B5E20",
+    "Hutan Produksi": "#2E7D32",
+    "Kebun": "#66BB6A",
+    "Permukiman": "#FFB300",
+    "Sawah Irigasi": "#FB8C00",
+    "Semak/Belukar": "#FB8C00",
+    "Tegalan/Ladang": "#D32F2F",
+    "Sawah Tadah Hujan": "#D32F2F",
+    "Sungai": "#0284C7",
+    "Danau/Waduk": "#0369A1",
+    "Makam": "#8D6E63",
+    "Candi Prambanan": "#7C3AED",
+  });
+
   const GROUP_FALLBACK_LABELS = Object.freeze({
     hutan: "Tutupan hutan",
     pertanian: "Pertanian dan perkebunan",
@@ -63,20 +79,30 @@
   }
 
   function classColor(className, group, sourceHex) {
-    if (sourceHex) return sourceHex;
+    if (sourceHex && /^#[0-9a-f]{6}$/i.test(String(sourceHex).trim())) {
+      return String(sourceHex).trim();
+    }
+    if (className && CLASS_COLORS[className]) {
+      return CLASS_COLORS[className];
+    }
     return GROUP_COLORS[group] || GROUP_COLORS.lainnya;
   }
 
-  function normalizeClass(item) {
+  function normalizeClass(item, featureColorByClass) {
     const group = item.group || "lainnya";
+    const className = String(item.className || "Tidak diketahui");
+    const fallbackFeatureHex =
+      featureColorByClass && featureColorByClass[className]
+        ? featureColorByClass[className]
+        : null;
     return {
-      className: String(item.className || "Tidak diketahui"),
+      className: className,
       group: group,
       groupLabel: item.groupLabel || GROUP_FALLBACK_LABELS[group] || "Kelas lain",
       featureCount: numberOrNull(item.featureCount) || 0,
       areaM2: numberOrNull(item.areaM2),
       percentOfPolygon: percent(item.percentOfPolygon),
-      color: classColor(item.className, group, item.color),
+      color: classColor(className, group, item.color || fallbackFeatureHex),
     };
   }
 
@@ -120,8 +146,16 @@
     const source = report && typeof report === "object" ? report : {};
     const rawClasses = Array.isArray(source.classes) ? source.classes : [];
     const rawFeatures = Array.isArray(source.features) ? source.features : [];
-    const classes = rawClasses.map(normalizeClass);
     const features = rawFeatures.map(normalizeFeature);
+    const featureColorByClass = {};
+    features.forEach(function (feat) {
+      if (feat.className && feat.color && !featureColorByClass[feat.className]) {
+        featureColorByClass[feat.className] = feat.color;
+      }
+    });
+    const classes = rawClasses.map(function (item) {
+      return normalizeClass(item, featureColorByClass);
+    });
     const available = Boolean(source.available);
     const coverageRatio = numberOrNull(source.coverageRatio);
     const normalized = {

@@ -377,7 +377,22 @@
     return { code: "labil", label: "LABIL / LONGSOR", description: "FS < 1,07", color: "#ef4444" };
   }
 
-  function summarizeActualValues(key, segments) {
+  function summarizeActualValues(key, segments, landUse) {
+    if (
+      key === "landCover" &&
+      landUse &&
+      landUse.available &&
+      Array.isArray(landUse.classes) &&
+      landUse.classes.length > 0
+    ) {
+      return landUse.classes
+        .map(function (item) {
+          const name = String(item.className || "Tidak diketahui").trim();
+          const pct = toFiniteNumber(item.percentOfPolygon);
+          return pct != null ? name + " (" + formatNumber(pct, 1) + "%)" : name;
+        })
+        .join(", ");
+    }
     const actualKeyMap = {
       slope: "slopeDeg",
       soil: "soilType",
@@ -416,7 +431,26 @@
     return values[0].value + (values.length > 1 ? " (+" + (values.length - 1) + " lainnya)" : "");
   }
 
-  function actualValuesForKey(key, segments) {
+  function actualValuesForKey(key, segments, landUse) {
+    if (
+      key === "landCover" &&
+      landUse &&
+      landUse.available &&
+      Array.isArray(landUse.classes) &&
+      landUse.classes.length > 0
+    ) {
+      return landUse.classes
+        .map(function (item) {
+          return {
+            value: String(item.className || "Tidak diketahui").trim(),
+            areaM2: toFiniteNumber(item.areaM2) || 0,
+            percentOfPolygon: toFiniteNumber(item.percentOfPolygon),
+          };
+        })
+        .sort(function (a, b) {
+          return b.areaM2 - a.areaM2;
+        });
+    }
     const actualKeyMap = {
       slope: "slopeDeg",
       soil: "soilType",
@@ -643,8 +677,8 @@
         standardWeightPercent: STANDARD_WEIGHTS[criterion.key] * 100,
         dataStatus: dataStatus,
         missingSegmentCount: missingSegments.length,
-        actualSummary: summarizeActualValues(criterion.key, segmentRows),
-        actualValues: actualValuesForKey(criterion.key, segmentRows),
+        actualSummary: summarizeActualValues(criterion.key, segmentRows, input.landUse),
+        actualValues: actualValuesForKey(criterion.key, segmentRows, input.landUse),
         interpretation: score != null ? describeScore(criterion.key, score) : "Data kriteria tidak tersedia.",
       };
     });

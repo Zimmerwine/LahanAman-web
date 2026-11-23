@@ -854,7 +854,14 @@
   }
 
   function pointInGeometry(xUtm, yUtm, lngWgs, latWgs, geom) {
-    if (!geom || !geom.coordinates || !geom.coordinates.length) return false;
+    if (!geom) return false;
+    if (geom.type === "GeometryCollection" && Array.isArray(geom.geometries)) {
+      for (const subGeom of geom.geometries) {
+        if (pointInGeometry(xUtm, yUtm, lngWgs, latWgs, subGeom)) return true;
+      }
+      return false;
+    }
+    if (!geom.coordinates || !geom.coordinates.length) return false;
     const sampleCoord =
       geom.type === "Polygon"
         ? geom.coordinates[0] && geom.coordinates[0][0]
@@ -1012,6 +1019,7 @@
 
     // 5. Tutupan Lahan berbasis Dasar.xlsx
     const tutupanStr =
+      tuProps.pl ||
       tuProps.tutupan_lahan ||
       tuProps.klasifikasi ||
       krProps.ket_lahan ||
@@ -2884,33 +2892,71 @@
     }
   }
 
-  async function fetchGeoJSON(filename) {
-    if (
-      filename !== "clean_kerawanan_longsor.geojson" &&
-      window.LAHAN_AMAN_GEOJSON &&
-      window.LAHAN_AMAN_GEOJSON[filename]
-    ) {
-      return window.LAHAN_AMAN_GEOJSON[filename];
+  function ekstrakGeometriPoligonDisplay(geom) {
+    if (!geom || typeof geom !== "object") return geom;
+    if (geom.type === "Polygon" || geom.type === "MultiPolygon") return geom;
+    if (geom.type === "GeometryCollection" && Array.isArray(geom.geometries)) {
+      const polygons = [];
+      const collect = (g) => {
+        if (!g) return;
+        if (g.type === "Polygon" && Array.isArray(g.coordinates) && g.coordinates.length) {
+          polygons.push(g.coordinates);
+        } else if (g.type === "MultiPolygon" && Array.isArray(g.coordinates)) {
+          for (const poly of g.coordinates) {
+            if (Array.isArray(poly) && poly.length) polygons.push(poly);
+          }
+        } else if (g.type === "GeometryCollection" && Array.isArray(g.geometries)) {
+          g.geometries.forEach(collect);
+        }
+      };
+      geom.geometries.forEach(collect);
+      if (polygons.length === 1) {
+        return { type: "Polygon", coordinates: polygons[0] };
+      }
+      if (polygons.length > 1) {
+        return { type: "MultiPolygon", coordinates: polygons };
+      }
     }
-    if (filename === "clean_tutupan_lahan_diy.geojson" || filename === "clean_tutupan_lahan_sleman_bantul.geojson") {
+    return geom;
+  }
+
+  function normalisasiDataKerawanan(data) {
+    if (!data || !Array.isArray(data.features)) return data;
+    return {
+      type: "FeatureCollection",
+      features: data.features.map((feat) => {
+        if (!feat || !feat.geometry || feat.geometry.type !== "GeometryCollection") {
+          return feat;
+        }
+        return Object.assign({}, feat, {
+          geometry: ekstrakGeometriPoligonDisplay(feat.geometry),
+        });
+      }),
+    };
+  }
+
+  async function muatBundleTutupanFallback() {
+    if (window.LAHAN_AMAN_TUTUPAN) {
+      return window.LAHAN_AMAN_TUTUPAN;
+    }
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "tutupan_bundle.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
       if (window.LAHAN_AMAN_TUTUPAN) {
         return window.LAHAN_AMAN_TUTUPAN;
       }
-      try {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "tutupan_bundle.js";
-          s.onload = resolve;
-          s.onerror = reject;
-          document.head.appendChild(s);
-        });
-        if (window.LAHAN_AMAN_TUTUPAN) {
-          return window.LAHAN_AMAN_TUTUPAN;
-        }
-      } catch (_err) {
-        // lanjut ke HTTP fetch
-      }
+    } catch (_err) {
+      // abaikan bila bundle gagal dimuat
     }
+    return null;
+  }
+
+  async function fetchGeoJSONByPaths(filename) {
     const paths = [
       `/data/${filename}`,
       `../public/data/${filename}`,
@@ -2926,6 +2972,65 @@
         // lanjut coba path berikutnya
       }
     }
+    return null;
+  }
+
+  async function fetchGeoJSON(filename) {
+    const isKerawananFile =
+      filename === "clean_kerawanan_longsor.geojson" ||
+      filename === "clean_kerawanan_longsor_display.geojson";
+    const isTutupanFile =
+      filename === "clean_tutupan_lahan_diy.geojson" ||
+      filename === "clean_tutupan_lahan_sleman_bantul.geojson";
+
+    if (
+      !isKerawananFile &&
+      !isTutupanFile &&
+      window.LAHAN_AMAN_GEOJSON &&
+      window.LAHAN_AMAN_GEOJSON[filename]
+    ) {
+      return window.LAHAN_AMAN_GEOJSON[filename];
+    }
+
+    const fetched = await fetchGeoJSONByPaths(filename);
+    if (fetched) {
+      return isKerawananFile ? normalisasiDataKerawanan(fetched) : fetched;
+    }
+
+    if (filename === "clean_kerawanan_longsor_display.geojson") {
+      const fallbackRaw = await fetchGeoJSONByPaths("clean_kerawanan_longsor.geojson");
+      if (fallbackRaw) {
+        return normalisasiDataKerawanan(fallbackRaw);
+      }
+      if (
+        window.LAHAN_AMAN_GEOJSON &&
+        window.LAHAN_AMAN_GEOJSON["clean_kerawanan_longsor.geojson"]
+      ) {
+        return normalisasiDataKerawanan(
+          window.LAHAN_AMAN_GEOJSON["clean_kerawanan_longsor.geojson"]
+        );
+      }
+    }
+
+    if (
+      filename === "clean_kerawanan_longsor.geojson" &&
+      window.LAHAN_AMAN_GEOJSON &&
+      window.LAHAN_AMAN_GEOJSON["clean_kerawanan_longsor.geojson"]
+    ) {
+      return normalisasiDataKerawanan(
+        window.LAHAN_AMAN_GEOJSON["clean_kerawanan_longsor.geojson"]
+      );
+    }
+
+    if (isTutupanFile) {
+      const tutupanFallback = await muatBundleTutupanFallback();
+      if (tutupanFallback) return tutupanFallback;
+    }
+
+    if (window.LAHAN_AMAN_GEOJSON && window.LAHAN_AMAN_GEOJSON[filename]) {
+      return window.LAHAN_AMAN_GEOJSON[filename];
+    }
+
     throw new Error(`Gagal memuat ${filename}`);
   }
 
@@ -2994,6 +3099,13 @@
         state.kerawananFeatures = krData ? krData.features || [] : [];
       } catch (_ekr) {
         state.kerawananFeatures = [];
+      }
+
+      try {
+        const tuData = await fetchGeoJSON("clean_tutupan_lahan_diy.geojson");
+        state.tutupanFeatures = tuData ? tuData.features || [] : [];
+      } catch (_etu) {
+        state.tutupanFeatures = [];
       }
 
       let nHijau = 0,
@@ -3325,15 +3437,25 @@
     }
     try {
       setLoading("⏳ Memuat layer Tutupan Lahan (RBI 25K)...");
-      const data = await fetchGeoJSON("clean_tutupan_lahan_diy.geojson");
+      const data = state.tutupanFeatures.length
+        ? { type: "FeatureCollection", features: state.tutupanFeatures }
+        : await fetchGeoJSON("clean_tutupan_lahan_diy.geojson");
       state.tutupanFeatures = data.features || [];
-      state.layers.tutupan = buatLayerGeoJsonUTM(data, {
+      const polygonTutupanData = {
+        type: "FeatureCollection",
+        features: state.tutupanFeatures.filter((feature) => {
+          const gType = feature && feature.geometry && feature.geometry.type;
+          return gType === "Polygon" || gType === "MultiPolygon";
+        }),
+      };
+      state.layers.tutupan = buatLayerGeoJsonUTM(polygonTutupanData, {
         renderer: canvasRenderer,
         interactive: true,
         style: (feature) => {
           const fp = feature.properties || {};
-          const tu = evaluasiTutupanLahan(fp.tutupan_lahan || fp.klasifikasi, 5);
-          const sLahan = Number(fp.skor_lahan || tu.skor || 3);
+          const namaPl = fp.pl || fp.tutupan_lahan || fp.klasifikasi || "Tutupan Lahan";
+          const tu = evaluasiTutupanLahan(namaPl, 5);
+          const sLahan = Number(fp.skor_lahan || fp.skor || tu.skor || 3);
           const fillHex = fp.warna_hex || SCORE_COLORS[sLahan] || tu.warnaHex || "#FFB300";
           return {
             color: "#1e293b",
@@ -3344,10 +3466,14 @@
         },
         onEachFeature: (feature, layer) => {
           const fp = feature.properties || {};
-          const namaPl = fp.tutupan_lahan || fp.klasifikasi || "Tutupan Lahan";
+          const namaPl = fp.pl || fp.tutupan_lahan || fp.klasifikasi || "Tutupan Lahan";
           const tu = evaluasiTutupanLahan(namaPl, 5);
+          const skorLahan = Number(fp.skor_lahan || fp.skor || tu.skor || 3);
+          const crVal = fp.cr_kpa != null ? fp.cr_kpa : tu.crKpa;
+          const qVal = fp.q_kpa != null ? fp.q_kpa : tu.qKpa;
+          const kabInfo = fp.kabupaten ? ` · ${fp.kabupaten}` : "";
           layer.bindTooltip(
-            `<b>Tutupan lahan: ${namaPl}</b><br><span style="font-size:11px;">Skor lahan: <b>${tu.skor}/5</b> (bobot 10%) · cr ${tu.crKpa} kPa · q ${tu.qKpa} kPa</span>`,
+            `<b>Penggunaan lahan: ${namaPl}${kabInfo}</b><br><span style="font-size:11px;">Skor lahan: <b>${skorLahan}/5</b> (bobot 10%) · cr ${crVal} kPa · q ${qVal} kPa</span>`,
             { sticky: true }
           );
           layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));
@@ -3765,7 +3891,18 @@
         summary: summary,
         polygonAreaM2: polygonAreaM2,
         landUse: state.activeKavlingResult.land_use || null,
+        sensitiveAreas: state.activeKavlingResult.sensitive_areas || null,
         crs: "EPSG:4326",
+      };
+    },
+    getMapSnapshotState() {
+      return {
+        map: map,
+        geometry: state.activeKavlingGeometry,
+        kavlingResult: state.activeKavlingResult,
+        spkAssessment: state.spkAssessment,
+        spkLandUseReport: state.spkLandUseReport,
+        latLngToUtm49s: latLngToUtm49s,
       };
     },
     startDrawing() {

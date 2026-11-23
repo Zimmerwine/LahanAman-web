@@ -7,6 +7,7 @@
   const Store = root.LahanAmanSPKStore;
   const LandUse = root.LahanAmanLandUse;
   const Interpretation = root.LahanAmanSPKInterpretation;
+  const PdfReport = root.LahanAmanSPKPDF;
 
   const TABS = [
     { id: "summary", label: "Ringkasan SPK" },
@@ -567,6 +568,7 @@
         summary: ctx.summary,
         config: config,
         landUse: ctx.landUse || null,
+        sensitiveAreas: ctx.sensitiveAreas || null,
       });
       const constraintResult = Constraints.evaluateConstraints(assessment);
       assessment.constraints = constraintResult;
@@ -650,7 +652,7 @@
       "</p></div>" +
       '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;"><span class="spk-tag">' +
       escapeHtml(custom ? "BOBOT PILIHAN" : "BOBOT STANDAR") +
-      '</span><button type="button" class="btn btn-secondary" id="spk-edit-config" style="height:26px;padding:0 8px;font-size:9px;">Ubah parameter</button></div></div>' +
+      '</span><button type="button" class="btn btn-secondary" id="spk-head-download-pdf" style="height:26px;padding:0 8px;font-size:9px;">Unduh laporan PDF</button><button type="button" class="btn btn-secondary" id="spk-edit-config" style="height:26px;padding:0 8px;font-size:9px;">Ubah parameter</button></div></div>' +
       '<div class="spk-score-grid">' +
       scoreCard(custom ? "Nilai dengan bobot pilihan" : "Nilai penilaian", fmt(active.score, 2), activeClass, true) +
       scoreCard("Nilai standar penelitian", fmt(assessment.standard.score, 2), standardClass, false) +
@@ -1087,7 +1089,9 @@
       .map(function (item) {
         return (
           '<div class="spk-data-row">' +
-          '<span class="spk-data-cell spk-data-cell--primary">' +
+          '<span class="spk-data-cell spk-data-cell--primary"><span class="spk-dot" style="background:' +
+          escapeHtml(item.color || "#66BB6A") +
+          ';display:inline-block;margin-right:6px;vertical-align:middle;"></span>' +
           escapeHtml(item.className) +
           '<small class="spk-land-use-description">' +
           escapeHtml(descriptions[item.className] || ("Area yang tercatat sebagai " + item.className + " dalam data penggunaan lahan.")) +
@@ -1248,7 +1252,10 @@
       "<div><dt>Catatan tambahan</dt><dd>" + escapeHtml(decision.notes || "-") + "</dd></div>" +
       "</dl></section>" +
       '<div class="spk-alert spk-alert--info"><span class="spk-alert-title">Catatan arsip lokal</span><span class="spk-alert-text">Catatan tersimpan pada browser perangkat ini, bukan basis data terpusat. ' + escapeHtml(getInterpretation(assessment).finalNote) + "</span></div>" +
-      '<div class="spk-actions"><button type="button" class="btn btn-primary" id="spk-final-export">Ekspor hasil akhir JSON</button></div>' +
+      '<div class="spk-actions">' +
+      '<button type="button" class="btn btn-primary" id="spk-final-download-pdf">Unduh laporan PDF</button>' +
+      '<button type="button" class="btn btn-secondary" id="spk-final-export">Ekspor hasil akhir JSON</button>' +
+      "</div>" +
       '<div id="spk-final-export-status" class="spk-field-help" role="status"></div></section>'
     );
   }
@@ -1306,6 +1313,7 @@
       '<div class="spk-actions">' +
       '<button type="button" class="btn btn-primary" id="spk-save-decision">Simpan keputusan</button>' +
       '<button type="button" class="btn btn-secondary" id="spk-save-draft">Simpan draf</button>' +
+      '<button type="button" class="btn btn-secondary" id="spk-download-pdf">Unduh laporan PDF</button>' +
       '<button type="button" class="btn btn-secondary" id="spk-export-decision">Ekspor JSON</button>' +
       "</div>" +
       '<div id="spk-form-status" class="spk-field-help" role="status"></div>' +
@@ -1333,7 +1341,9 @@
                 "</span><span class=\"mono\">" +
                 escapeHtml(record.assessmentId) +
                 "</span></div>" +
-                '<div class="spk-history-actions"><button type="button" class="btn btn-secondary" data-export-review="' +
+                '<div class="spk-history-actions"><button type="button" class="btn btn-secondary" data-pdf-review="' +
+                escapeHtml(record.reviewId) +
+                '">Unduh PDF</button><button type="button" class="btn btn-secondary" data-export-review="' +
                 escapeHtml(record.reviewId) +
                 '">Ekspor</button><button type="button" class="btn btn-ghost" data-delete-review="' +
                 escapeHtml(record.reviewId) +
@@ -1436,6 +1446,70 @@
     else setFormStatus("Catatan JSON diekspor.", "success");
   }
 
+  async function downloadPdfForCurrentAssessment(targetStatusId) {
+    const assessment = state.assessment;
+    if (!assessment) return;
+    const pdfApi = PdfReport || root.LahanAmanSPKPDF;
+    const statusEl = targetStatusId ? document.getElementById(targetStatusId) : null;
+    const reportStatus = function (msg, tone) {
+      if (statusEl) {
+        statusEl.textContent = msg;
+        statusEl.style.color =
+          tone === "error" ? "var(--red)" : tone === "success" ? "var(--green)" : "var(--text-muted)";
+      } else {
+        setFormStatus(msg, tone);
+      }
+    };
+    if (!pdfApi || typeof pdfApi.downloadPdfReport !== "function") {
+      reportStatus("Modul pembuat laporan PDF belum dimuat.", "error");
+      return;
+    }
+    try {
+      const form = document.getElementById("spk-decision-form")
+        ? collectForm()
+        : state.formDraft || (state.savedRecord && state.savedRecord.humanDecision) || null;
+      const record =
+        state.savedRecord ||
+        (Store && typeof Store.createReviewRecord === "function"
+          ? Store.createReviewRecord(assessment, form || {})
+          : null);
+      const ctx = context() || {};
+      reportStatus("Menyiapkan dokumen laporan PDF dan gambar peta kavling...", "info");
+      const res = await pdfApi.downloadPdfReport({
+        assessment: assessment,
+        record: record,
+        formDraft: form,
+        context: ctx,
+      });
+      if (res && res.cancelled) {
+        reportStatus(res.message || "Penyimpanan laporan PDF dibatalkan.", "info");
+      } else if (res && res.ok) {
+        reportStatus(
+          "Laporan PDF berhasil disimpan (" + (res.filename || "Laporan_SPK.pdf") + ").",
+          "success"
+        );
+      } else {
+        reportStatus("Gagal mengunduh laporan PDF.", "error");
+      }
+    } catch (err) {
+      reportStatus("Gagal membuat laporan PDF: " + (err && err.message ? err.message : String(err)), "error");
+    }
+  }
+
+  async function downloadPdfForSavedReview(reviewId) {
+    const pdfApi = PdfReport || root.LahanAmanSPKPDF;
+    if (!pdfApi || typeof pdfApi.downloadPdfReport !== "function") return;
+    const record = Store.findReview(reviewId);
+    if (!record) return;
+    const ctx = context() || {};
+    await pdfApi.downloadPdfReport({
+      assessment: record.assessment || state.assessment,
+      record: record,
+      formDraft: record.humanDecision || {},
+      context: ctx,
+    });
+  }
+
   function bindResultEvents() {
     const editConfig = document.getElementById("spk-edit-config");
     if (editConfig) {
@@ -1443,6 +1517,14 @@
         state.view = "config";
         state.error = null;
         render();
+      });
+    }
+    const headDownloadPdf = document.getElementById("spk-head-download-pdf");
+    if (headDownloadPdf) {
+      headDownloadPdf.addEventListener("click", function () {
+        downloadPdfForCurrentAssessment(
+          state.activeTab === "final" ? "spk-final-export-status" : "spk-form-status"
+        );
       });
     }
     els.body.querySelectorAll("[data-spk-tab]").forEach(function (button) {
@@ -1470,6 +1552,18 @@
     if (saveDraft) saveDraft.addEventListener("click", function () { saveDecision(true); });
     const exportButton = document.getElementById("spk-export-decision");
     if (exportButton) exportButton.addEventListener("click", exportDecision);
+    const downloadPdfButton = document.getElementById("spk-download-pdf");
+    if (downloadPdfButton) {
+      downloadPdfButton.addEventListener("click", function () {
+        downloadPdfForCurrentAssessment("spk-form-status");
+      });
+    }
+    const finalDownloadPdf = document.getElementById("spk-final-download-pdf");
+    if (finalDownloadPdf) {
+      finalDownloadPdf.addEventListener("click", function () {
+        downloadPdfForCurrentAssessment("spk-final-export-status");
+      });
+    }
     const finalExport = document.getElementById("spk-final-export");
     if (finalExport) {
       finalExport.addEventListener("click", function () {
@@ -1488,6 +1582,11 @@
         }
       });
     }
+    els.body.querySelectorAll("[data-pdf-review]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        downloadPdfForSavedReview(button.getAttribute("data-pdf-review"));
+      });
+    });
     els.body.querySelectorAll("[data-export-review]").forEach(function (button) {
       button.addEventListener("click", function () {
         const record = Store.findReview(button.getAttribute("data-export-review"));
