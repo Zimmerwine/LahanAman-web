@@ -62,7 +62,7 @@ export function DashboardPage() {
       .catch((err) => console.error("Gagal memuat batas administrasi:", err));
 
     // Muat data master kerawanan longsor untuk metrik akurat
-    fetch("/data/clean_kerawanan_longsor.geojson")
+    fetch("/data/Hasil Singleparts Kerawanan Longsor.geojson")
       .then((res) => res.json())
       .then((fc) => {
         if (!active || !fc?.features) return;
@@ -84,10 +84,19 @@ export function DashboardPage() {
     const source = masterKrFeatures.length > 0 ? masterKrFeatures : adminFeatures;
     for (const feat of source) {
       const p = feat.properties || {};
-      const skor = Number(p.skor_akhir ?? p.skor_total ?? 2.5);
-      if (skor < 2.20) hijau++;
-      else if (skor <= 3.40) kuning++;
-      else merah++;
+      const zText = String(p.zona_triase || p.status_zona || "").toUpperCase();
+      if (zText.includes("MERAH")) {
+        merah++;
+      } else if (zText.includes("KUNING")) {
+        kuning++;
+      } else if (zText.includes("HIJAU")) {
+        hijau++;
+      } else {
+        const skor = Number(p.skor_akhir ?? p.skor_total ?? 2.5);
+        if (skor < 2.20) hijau++;
+        else if (skor <= 3.40) kuning++;
+        else merah++;
+      }
     }
 
     return { hijau, kuning, merah };

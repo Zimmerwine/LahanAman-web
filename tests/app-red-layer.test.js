@@ -21,7 +21,6 @@ test("startup enables the layer after data loading and tracks polygon counts sep
 });
 
 test("display-only geometry asset is loaded separately from the source GeoJSON", () => {
-  assert.match(app, /fetchGeoJSON\("clean_kerawanan_longsor_display\.geojson"\)/);
-  assert.equal(fs.existsSync(path.join(root, "public/data/clean_kerawanan_longsor_display.geojson")), true);
-  assert.equal(fs.existsSync(path.join(root, "public/data/clean_kerawanan_longsor.geojson")), true);
+  assert.match(app, /fetchGeoJSON\("Hasil Singleparts Kerawanan Longsor\.geojson"\)/);
+  assert.equal(fs.existsSync(path.join(root, "public/data/Hasil Singleparts Kerawanan Longsor.geojson")), true);
 });

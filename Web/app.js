@@ -977,8 +977,8 @@
       adminProps.jenis_tanah ||
       "Regosol";
     const pedologi = evaluasiPedologiTanah(jenisTanahStr);
-    if (Number(tnProps.skor_tanah || krProps.skor_tanah) >= 1) {
-      pedologi.skor = Number(tnProps.skor_tanah || krProps.skor_tanah);
+      if (Number(tnProps.skor_tanah || tnProps["skor tanah"] || krProps.skor_tanah || krProps["skor tanah"]) >= 1) {
+      pedologi.skor = Number(tnProps.skor_tanah || tnProps["skor tanah"] || krProps.skor_tanah || krProps["skor tanah"]);
     }
     if (Number(tnProps.c_kpa || krProps.c_kpa) > 0) {
       pedologi.cPrime = Number(tnProps.c_kpa || krProps.c_kpa);
@@ -1042,6 +1042,17 @@
       : (krProps.skor_akhir ?? adminProps.skor_total);
     if (rawSkor !== undefined && rawSkor !== null) {
       terapkanZonaSkor(triase, rawSkor);
+    }
+
+    const rawZonaTriase = (rawProps && rawProps.zona_triase) || krProps.zona_triase;
+    if (rawZonaTriase) {
+      const zStyle = warnaZonaTriase({ zona_triase: rawZonaTriase, skor_akhir: triase.skorAkhir });
+      triase.kode = zStyle.kode;
+      triase.hex = zStyle.fill;
+      triase.zonaKode = zStyle.zonaKode;
+      triase.namaZona = zStyle.zonaKode === "ZONA MERAH" ? "Zona Merah" : zStyle.zonaKode === "ZONA KUNING" ? "Zona Kuning" : "Zona Hijau";
+      triase.zonaTriase = String(rawZonaTriase);
+      triase.badge = `SKOR ${Number(triase.skorAkhir).toFixed(2)} — ${zStyle.zonaKode}`;
     }
 
     const rawFs = (rawProps && rawProps.fs != null)
@@ -1807,11 +1818,12 @@
           <span class="zone-chip ${triase.kode}"><span class="zone-dot" style="background:${triase.hex};"></span>${triase.badge}</span>
         </div>
         <h3 class="map-popup-title">${labelWilayah}</h3>
+        <p class="map-popup-coord">${triase.zonaTriase || "-"}</p>
         <p class="map-popup-coord">WGS 84 ${info.latWgs84.toFixed(5)}, ${info.lonWgs84.toFixed(5)}</p>
         <dl class="map-popup-grid">
           <div>
-            <dt>Skor GPKG</dt>
-            <dd>${formatAngka(triase.skorAkhir, 2)}</dd>
+            <dt>Skor Akhir</dt>
+            <dd>${formatAngka(triase.skorAkhir, 2)} / 5,00</dd>
           </div>
           <div>
             <dt>Kemiringan</dt>
@@ -1917,19 +1929,33 @@
 
           info.triase = evaluasiZonaGPKG(info.lereng, info.pedologi, info.litologi, info.hujan, info.tutupan);
 
-          const apiSkor = (bData.skor_internal && bData.skor_internal.skor_akhir != null)
-            ? bData.skor_internal.skor_akhir
-            : bData.triase.skor_akhir;
+          const hasDirectKrSkor = rawPropsOverride && rawPropsOverride.skor_akhir != null;
+          const hasDirectKrZona = rawPropsOverride && rawPropsOverride.zona_triase;
+          const apiSkor = hasDirectKrSkor
+            ? rawPropsOverride.skor_akhir
+            : ((bData.skor_internal && bData.skor_internal.skor_akhir != null)
+              ? bData.skor_internal.skor_akhir
+              : bData.triase.skor_akhir);
           if (apiSkor !== undefined && apiSkor !== null) {
             terapkanZonaSkor(info.triase, apiSkor);
-            if (bData.triase.warna_hex) info.triase.hex = bData.triase.warna_hex;
-            if (bData.triase.zona_kode) {
-              info.triase.zonaKode = bData.triase.zona_kode;
-              info.triase.namaZona = bData.triase.zona || info.triase.namaZona;
-              info.triase.zonaTriase = `${bData.triase.zona_kode} (${bData.triase.rekomendasi || info.triase.deskripsi})`;
+            if (hasDirectKrZona) {
+              const zStyle = warnaZonaTriase({ zona_triase: rawPropsOverride.zona_triase, skor_akhir: apiSkor });
+              info.triase.kode = zStyle.kode;
+              info.triase.hex = zStyle.fill;
+              info.triase.zonaKode = zStyle.zonaKode;
+              info.triase.namaZona = zStyle.zonaKode === "ZONA MERAH" ? "Zona Merah" : zStyle.zonaKode === "ZONA KUNING" ? "Zona Kuning" : "Zona Hijau";
+              info.triase.zonaTriase = String(rawPropsOverride.zona_triase);
+              info.triase.badge = `SKOR ${Number(apiSkor).toFixed(2)} — ${zStyle.zonaKode}`;
+            } else {
+              if (bData.triase.warna_hex) info.triase.hex = bData.triase.warna_hex;
+              if (bData.triase.zona_kode) {
+                info.triase.zonaKode = bData.triase.zona_kode;
+                info.triase.namaZona = bData.triase.zona || info.triase.namaZona;
+                info.triase.zonaTriase = `${bData.triase.zona_kode} (${bData.triase.rekomendasi || info.triase.deskripsi})`;
+              }
+              if (bData.triase.badge) info.triase.badge = bData.triase.badge;
+              if (bData.triase.rekomendasi) info.triase.deskripsi = bData.triase.rekomendasi;
             }
-            if (bData.triase.badge) info.triase.badge = bData.triase.badge;
-            if (bData.triase.rekomendasi) info.triase.deskripsi = bData.triase.rekomendasi;
           }
           if (bData.triase.fs !== undefined && bData.triase.fs !== null) {
             terapkanFsInfo(
@@ -2901,8 +2927,26 @@
     return null;
   }
 
+  function warnaZonaTriase(props) {
+    const fp = props || {};
+    const zText = String(fp.zona_triase || fp.status_zona || fp.zona_kelayakan || "").toUpperCase();
+    if (zText.includes("MERAH")) return { fill: TRIAGE_HEX.merah, border: "#B71C1C", kode: "merah", zonaKode: "ZONA MERAH" };
+    if (zText.includes("KUNING")) return { fill: TRIAGE_HEX.kuning, border: "#E65100", kode: "kuning", zonaKode: "ZONA KUNING" };
+    if (zText.includes("HIJAU")) return { fill: TRIAGE_HEX.hijau, border: "#1B5E20", kode: "hijau", zonaKode: "ZONA HIJAU" };
+    if (fp.warna_hex) {
+      return { fill: fp.warna_hex, border: fp.border_hex || "#1e293b", kode: "hijau", zonaKode: "ZONA HIJAU" };
+    }
+    const sk = Number(fp.skor_akhir);
+    if (Number.isFinite(sk)) {
+      if (sk > 3.40) return { fill: TRIAGE_HEX.merah, border: "#B71C1C", kode: "merah", zonaKode: "ZONA MERAH" };
+      if (sk >= 2.20) return { fill: TRIAGE_HEX.kuning, border: "#E65100", kode: "kuning", zonaKode: "ZONA KUNING" };
+    }
+    return { fill: TRIAGE_HEX.hijau, border: "#1B5E20", kode: "hijau", zonaKode: "ZONA HIJAU" };
+  }
+
   async function fetchGeoJSON(filename) {
     const isKerawananFile =
+      filename === "Hasil Singleparts Kerawanan Longsor.geojson" ||
       filename === "clean_kerawanan_longsor.geojson" ||
       filename === "clean_kerawanan_longsor_display.geojson";
     const isTutupanFile =
@@ -2921,6 +2965,17 @@
     const fetched = await fetchGeoJSONByPaths(filename);
     if (fetched) {
       return isKerawananFile ? normalisasiDataKerawanan(fetched) : fetched;
+    }
+
+    if (filename === "Hasil Singleparts Kerawanan Longsor.geojson") {
+      const fallbackDisplay = await fetchGeoJSONByPaths("clean_kerawanan_longsor_display.geojson");
+      if (fallbackDisplay) {
+        return normalisasiDataKerawanan(fallbackDisplay);
+      }
+      const fallbackRaw = await fetchGeoJSONByPaths("clean_kerawanan_longsor.geojson");
+      if (fallbackRaw) {
+        return normalisasiDataKerawanan(fallbackRaw);
+      }
     }
 
     if (filename === "clean_kerawanan_longsor_display.geojson") {
@@ -3021,7 +3076,7 @@
       state.tanahFeatures = tanahPolyData ? tanahPolyData.features || [] : [];
 
       try {
-        const krData = await fetchGeoJSON("clean_kerawanan_longsor_display.geojson");
+        const krData = await fetchGeoJSON("Hasil Singleparts Kerawanan Longsor.geojson");
         state.kerawananFeatures = krData ? krData.features || [] : [];
       } catch (_ekr) {
         state.kerawananFeatures = [];
@@ -3288,7 +3343,7 @@
       setLoading("⏳ Memuat Peta Skoring Kerawanan Longsor (GPKG)...");
       const data = state.kerawananFeatures.length
         ? { type: "FeatureCollection", features: state.kerawananFeatures }
-        : await fetchGeoJSON("clean_kerawanan_longsor_display.geojson");
+        : await fetchGeoJSON("Hasil Singleparts Kerawanan Longsor.geojson");
       state.kerawananFeatures = data.features || [];
       const isPolygonFeature = (feature) => {
         const geometryType = feature.geometry && feature.geometry.type;
@@ -3312,21 +3367,22 @@
           const fp = feature.properties || {};
           const type = feature.geometry && feature.geometry.type;
           const isPolygon = type === "Polygon" || type === "MultiPolygon";
-          const fillColor = fp.warna_hex || "#2E7D32";
+          const zStyle = warnaZonaTriase(fp);
+          const fillColor = zStyle.fill;
           return {
             fillColor,
-            color: isPolygon ? (fp.border_hex || "#1e293b") : fillColor,
-            weight: isPolygon ? 0.9 : 2.5,
+            color: isPolygon ? (fp.border_hex || zStyle.border) : fillColor,
+            weight: isPolygon ? 0.6 : 2.5,
             fillOpacity: state.layerOpacities.kerawananLongsor,
           };
         },
         onEachFeature: (feature, layer) => {
           const fp = feature.properties || {};
-          const skorAkhir = Number(fp.skor_akhir || 2.0).toFixed(2);
-          const statusZona = fp.zona_triase || "ZONA HIJAU";
-          const fsVal = Number(fp.fs || 5.0).toFixed(2);
+          const skorAkhir = Number(fp.skor_akhir ?? 2.0).toFixed(2);
+          const statusZona = fp.zona_triase || fp.status_zona || "ZONA HIJAU";
+          const skorTanah = fp.skor_tanah ?? fp["skor tanah"] ?? "-";
           layer.bindTooltip(
-            `<b>Skor GPKG ${skorAkhir} / 5,00 · FS ${fsVal} (${fp.fs_label || "STABIL"})</b><br><span style="font-size:11px;"><b>${statusZona}</b><br>Lereng ${fp.skor_lereng ?? "-"} (${fp.lereng_derajat ?? "-"}°) · Tanah ${fp.skor_tanah ?? "-"} · Batuan ${fp.skor_batuan ?? "-"} · Hujan ${fp.skor_hujan ?? "-"} · Lahan ${fp.skor_lahan ?? "-"}</span>`,
+            `<b>Skor Akhir: ${skorAkhir} / 5,00</b><br><span style="font-size:11px;"><b>${statusZona}</b><br>Lereng ${fp.skor_lereng ?? "-"} · Tanah ${skorTanah} · Batuan ${fp.skor_batuan ?? "-"} · Hujan ${fp.skor_hujan ?? "-"} · Lahan ${fp.skor_lahan ?? "-"}</span>`,
             { sticky: true }
           );
           layer.on("click", (ev) => inspeksiTitikPeta(ev.latlng, feature.properties));

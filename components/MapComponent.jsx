@@ -38,6 +38,85 @@ import { formatAdminLabel } from "./AdminFilterPanel";
 import "leaflet/dist/leaflet.css";
 
 /**
+ * Konversi koordinat UTM Zone 49S (EPSG:32749) ke WGS84 (Lat/Lon)
+ */
+export function utm49sToLatLng(xInput, yInput) {
+  const x = Number(xInput);
+  const y = Number(yInput);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return L.latLng(-7.7956, 110.3695);
+  }
+  if (Math.abs(x) <= 180 && Math.abs(y) <= 90) {
+    return L.latLng(y, x);
+  }
+  const a = 6378137.0;
+  const f = 1 / 298.257223563;
+  const k0 = 0.9996;
+  const lon0 = (111.0 * Math.PI) / 180.0;
+  const e2 = 2 * f - f * f;
+  const ep2 = e2 / (1 - e2);
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+
+  const xAdj = x - 500000.0;
+  const yAdj = y - 10000000.0;
+  const M = yAdj / k0;
+  const mu = M / (a * (1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 * e2 * e2) / 256));
+
+  const phi1 =
+    mu +
+    ((3 * e1) / 2 - (27 * Math.pow(e1, 3)) / 32) * Math.sin(2 * mu) +
+    ((21 * e1 * e1) / 16 - (55 * Math.pow(e1, 4)) / 32) * Math.sin(4 * mu) +
+    ((151 * Math.pow(e1, 3)) / 96) * Math.sin(6 * mu) +
+    ((1097 * Math.pow(e1, 4)) / 512) * Math.sin(8 * mu);
+
+  const sinPhi1 = Math.sin(phi1);
+  const cosPhi1 = Math.cos(phi1);
+  const tanPhi1 = Math.tan(phi1);
+  const N1 = a / Math.sqrt(1 - e2 * sinPhi1 * sinPhi1);
+  const T1 = tanPhi1 * tanPhi1;
+  const C1 = ep2 * cosPhi1 * cosPhi1;
+  const R1 = (a * (1 - e2)) / Math.pow(1 - e2 * sinPhi1 * sinPhi1, 1.5);
+  const D = xAdj / (N1 * k0);
+
+  const latRad =
+    phi1 -
+    ((N1 * tanPhi1) / R1) *
+      ((D * D) / 2 -
+        ((5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4)) / 24 +
+        ((61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6)) / 720);
+
+  const lonRad =
+    lon0 +
+    (D -
+      ((1 + 2 * T1 + C1) * Math.pow(D, 3)) / 6 +
+      ((5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5)) / 120) /
+      cosPhi1;
+
+  return L.latLng((latRad * 180.0) / Math.PI, (lonRad * 180.0) / Math.PI);
+}
+
+export function getTriaseColorFromProps(props) {
+  const p = props || {};
+  const zText = String(p.zona_triase || p.status_zona || p.zona_kelayakan || "").toUpperCase();
+  if (zText.includes("MERAH")) {
+    return { warnaHex: "#ef4444", borderHex: "#dc2626", zonaKode: "MERAH", zonaLabel: p.zona_triase || "ZONA MERAH" };
+  }
+  if (zText.includes("KUNING")) {
+    return { warnaHex: "#f59e0b", borderHex: "#d97706", zonaKode: "KUNING", zonaLabel: p.zona_triase || "ZONA KUNING" };
+  }
+  if (zText.includes("HIJAU")) {
+    return { warnaHex: "#10b981", borderHex: "#059669", zonaKode: "HIJAU", zonaLabel: p.zona_triase || "ZONA HIJAU" };
+  }
+  const zone = classifyZone(Number(p.skor_akhir ?? 2.0));
+  return {
+    warnaHex: p.warna_hex || zone.warnaHex,
+    borderHex: p.border_hex || zone.borderHex,
+    zonaKode: zone.zonaKode,
+    zonaLabel: p.zona_triase || p.zona_kelayakan || zone.zonaLabel,
+  };
+}
+
+/**
  * Konversi koordinat WGS84 (Lat/Lon) ke UTM Zone 49S (EPSG:32749)
  */
 export function latLngToUtm49s(lat, lon) {
@@ -128,7 +207,8 @@ export function buildInspectionFromProperties(props, lat, lng, utm) {
     const qKpa = Number(props.q_kpa ?? (skorLahan === 3 ? 15.0 : 0.0));
 
     const zone = classifyZone(skorAkhir);
-    const warnaHex = props.warna_hex || zone.warnaHex;
+    const triaseInfo = getTriaseColorFromProps(props);
+    const warnaHex = triaseInfo.warnaHex;
 
     const fsVal = props.fs !== undefined ? Number(props.fs) : computeInfiniteSlopeFS(
       betaDeg,
@@ -177,11 +257,11 @@ export function buildInspectionFromProperties(props, lat, lng, utm) {
       kabupaten,
       analysis: {
         skorAkhir,
-        zonaKode: zone.zonaKode,
-        zonaLabel: props.zona_kelayakan || zone.zonaLabel,
+        zonaKode: triaseInfo.zonaKode,
+        zonaLabel: triaseInfo.zonaLabel,
         zonaDeskripsi: zone.zonaDeskripsi,
         warnaHex,
-        borderHex: zone.borderHex,
+        borderHex: triaseInfo.borderHex,
         fs: fsVal,
         fsStatus,
         fsBadgeColor,
@@ -397,11 +477,21 @@ export function MapComponent({
           `<div style="font-family:system-ui,-apple-system,sans-serif;padding:2px;min-width:220px;">
             <div style="margin-bottom:6px;">
               <span style="background:${inspection.analysis.warnaHex};color:#fff;font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;display:inline-block;">
-                SKOR ${inspection.analysis.skorAkhir.toFixed(2)} — ${inspection.analysis.zonaLabel}
+                SKOR AKHIR: ${inspection.analysis.skorAkhir.toFixed(2)} — ${inspection.analysis.zonaLabel}
               </span>
             </div>
             <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:6px;">
               ${inspection.adminLabel}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;margin-bottom:4px;">
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:4px 6px;border-radius:6px;">
+                <span style="color:#64748b;font-size:9.5px;display:block;">Skor Akhir</span>
+                <b>${inspection.analysis.skorAkhir.toFixed(2)} / 5.00</b>
+              </div>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:4px 6px;border-radius:6px;">
+                <span style="color:#64748b;font-size:9.5px;display:block;">Zona Triase</span>
+                <b>${inspection.analysis.zonaKode}</b>
+              </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;">
               <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:4px 6px;border-radius:6px;">
@@ -520,17 +610,18 @@ export function MapComponent({
 
         // Tentukan style dinamis per fitur
         const layer = L.geoJSON(data, {
+          coordsToLatLng: (coords) => utm49sToLatLng(coords[0], coords[1]),
           style: (feature) => {
             const p = feature?.properties || {};
 
             // 1. Layer Master Kerawanan Longsor
             if (cfg.id === "kerawananLongsor") {
-              const warna = p.warna_hex || (p.skor_akhir < 2.20 ? "#10b981" : p.skor_akhir <= 3.40 ? "#f59e0b" : "#ef4444");
+              const triaseInfo = getTriaseColorFromProps(p);
               return {
-                fillColor: warna,
+                fillColor: triaseInfo.warnaHex,
                 fillOpacity: opacityVal,
-                color: p.border_hex || "#334155",
-                weight: 1.2,
+                color: triaseInfo.borderHex || "#334155",
+                weight: 1.0,
                 opacity: Math.min(1.0, opacityVal + 0.3),
               };
             }
