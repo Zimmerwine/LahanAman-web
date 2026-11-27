@@ -2966,12 +2966,30 @@
       return window.LAHAN_AMAN_GEOJSON[filename];
     }
 
+    if (
+      filename === "Hasil Singleparts Kerawanan Longsor.geojson" &&
+      window.LAHAN_AMAN_GEOJSON &&
+      window.LAHAN_AMAN_GEOJSON["Hasil Singleparts Kerawanan Longsor.geojson"]
+    ) {
+      return normalisasiDataKerawanan(
+        window.LAHAN_AMAN_GEOJSON["Hasil Singleparts Kerawanan Longsor.geojson"]
+      );
+    }
+
     const fetched = await fetchGeoJSONByPaths(filename);
     if (fetched) {
       return isKerawananFile ? normalisasiDataKerawanan(fetched) : fetched;
     }
 
     if (filename === "Hasil Singleparts Kerawanan Longsor.geojson") {
+      if (
+        window.LAHAN_AMAN_GEOJSON &&
+        window.LAHAN_AMAN_GEOJSON["Hasil Singleparts Kerawanan Longsor.geojson"]
+      ) {
+        return normalisasiDataKerawanan(
+          window.LAHAN_AMAN_GEOJSON["Hasil Singleparts Kerawanan Longsor.geojson"]
+        );
+      }
       const fallbackDisplay = await fetchGeoJSONByPaths("clean_kerawanan_longsor_display.geojson");
       if (fallbackDisplay) {
         return normalisasiDataKerawanan(fallbackDisplay);
@@ -2979,6 +2997,14 @@
       const fallbackRaw = await fetchGeoJSONByPaths("clean_kerawanan_longsor.geojson");
       if (fallbackRaw) {
         return normalisasiDataKerawanan(fallbackRaw);
+      }
+      if (
+        window.LAHAN_AMAN_GEOJSON &&
+        window.LAHAN_AMAN_GEOJSON["clean_kerawanan_longsor.geojson"]
+      ) {
+        return normalisasiDataKerawanan(
+          window.LAHAN_AMAN_GEOJSON["clean_kerawanan_longsor.geojson"]
+        );
       }
     }
 
