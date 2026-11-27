@@ -2909,12 +2909,16 @@
   }
 
   async function fetchGeoJSONByPaths(filename) {
+    const encoded = encodeURIComponent(filename);
     const paths = [
+      `/data/${encoded}`,
+      `../public/data/${encoded}`,
+      `public/data/${encoded}`,
       `/data/${filename}`,
       `../public/data/${filename}`,
       `public/data/${filename}`,
-      `../Data/processed/${filename}`,
-      `/Data/processed/${filename}`,
+      `../Data/processed/${encoded}`,
+      `/Data/processed/${encoded}`,
     ];
     for (const p of paths) {
       try {
@@ -3074,20 +3078,6 @@
       state.lerengFeatures = lerengPolyData ? lerengPolyData.features || [] : [];
       state.geologiFeatures = geologiPolyData ? geologiPolyData.features || [] : [];
       state.tanahFeatures = tanahPolyData ? tanahPolyData.features || [] : [];
-
-      try {
-        const krData = await fetchGeoJSON("Hasil Singleparts Kerawanan Longsor.geojson");
-        state.kerawananFeatures = krData ? krData.features || [] : [];
-      } catch (_ekr) {
-        state.kerawananFeatures = [];
-      }
-
-      try {
-        const tuData = await fetchGeoJSON("clean_tutupan_lahan_diy.geojson");
-        state.tutupanFeatures = tuData ? tuData.features || [] : [];
-      } catch (_etu) {
-        state.tutupanFeatures = [];
-      }
 
       let nHijau = 0,
         nKuning = 0,

@@ -613,7 +613,7 @@ def load_processed_data():
 
     layer_map = {
         "admin": "clean_batas_administrasi.geojson",
-        "kerawanan": "clean_kerawanan_longsor.geojson",
+        "kerawanan": "Hasil Singleparts Kerawanan Longsor.geojson",
         "lereng": "clean_kemiringan_lereng_diy.geojson",
         "tanah": "GJS Layer2_JenisTanah_SlemanBantul.geojson",
         "batuan": "GJS Layer3_Geologi_SlemanBantul.geojson",
@@ -957,7 +957,7 @@ def endpoint_query():
             u_kpa = float(kr_hit.get("u_kpa", round(rasio_m * GAMMA_W * z_depth, 2)))
 
             skor_l = int(kr_hit.get("skor_lereng", slope_info["skor"]))
-            skor_t = int(kr_hit.get("skor_tanah", 3))
+            skor_t = int(kr_hit.get("skor_tanah") or kr_hit.get("skor tanah") or 3)
             skor_b = int(kr_hit.get("skor_batuan", 2))
             skor_h = int(kr_hit.get("skor_hujan", 3))
             skor_lh = int(kr_hit.get("skor_lahan", 3))
@@ -967,7 +967,23 @@ def endpoint_query():
             fs_hex = "#10b981" if fs_val > 1.25 else ("#f59e0b" if fs_val >= 1.07 else "#ef4444")
             fs_desc = "Lereng stabil terhadap gelincir translasi (FS > 1,25)" if fs_val > 1.25 else ("Kestabilan kritis / rawan rayapan" if fs_val >= 1.07 else "Lereng labil, rawan longsor saat jenuh")
 
-            if skor_akhir < 2.20:
+            z_triase_str = str(kr_hit.get("zona_triase") or "").upper()
+            if "MERAH" in z_triase_str:
+                zona_kode = "ZONA MERAH"
+                zona_nama = "Zona Merah"
+                warna_hex = "#D32F2F"
+                rekomendasi = str(kr_hit.get("zona_triase") or "Risiko Tinggi / Rawan Longsor / Non-Buildable")
+            elif "KUNING" in z_triase_str:
+                zona_kode = "ZONA KUNING"
+                zona_nama = "Zona Kuning"
+                warna_hex = "#FB8C00"
+                rekomendasi = str(kr_hit.get("zona_triase") or "Risiko Sedang / Perlu Mitigasi Drainase, Pondasi Khusus / Talud")
+            elif "HIJAU" in z_triase_str:
+                zona_kode = "ZONA HIJAU"
+                zona_nama = "Zona Hijau"
+                warna_hex = "#2E7D32"
+                rekomendasi = str(kr_hit.get("zona_triase") or "Datar / Risiko Rendah / Konstruksi Standar")
+            elif skor_akhir < 2.20:
                 zona_kode = "ZONA HIJAU"
                 zona_nama = "Zona Hijau"
                 warna_hex = "#10b981"
