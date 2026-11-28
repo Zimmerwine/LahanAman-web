@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from api.index import app  # noqa: E402
+from api.index import app, calc_infinite_slope_fs, get_soil_params  # noqa: E402
 
 
 DEMO_POLYGON = {
@@ -120,8 +120,50 @@ class SPKApiTests(unittest.TestCase):
         self.assertAlmostEqual(payload["wilayah"]["elevasi_mdpl"], 869.14, places=2)
         self.assertAlmostEqual(payload["skor_internal"]["skor_akhir"], 2.55, places=2)
         self.assertEqual(payload["triase"]["zona"], "Zona Kuning")
-        self.assertAlmostEqual(payload["triase"]["fs"], 3.17, places=2)
-        self.assertEqual(payload["triase"]["fs_label"], "STABIL")
+        self.assertAlmostEqual(payload["triase"]["fs"], 2.10, places=2)
+        self.assertEqual(payload["triase"]["fs_label"], "Aman — KOR-03")
+        self.assertEqual(payload["triase"]["sni_label"], "Syarat Aman SNI 8460:2017: FS ≥ 1,50")
+
+    def test_locked_soil_lookup_and_three_mandatory_fs_points(self):
+        # 1. Tabel Lookup Parameter Tanah Terkunci (Layer 2)
+        expected_soils = {
+            "Grumusol": (5, 9.0, 15.0, 19.0, 2.0),
+            "Latosol": (4, 10.0, 18.0, 18.5, 2.0),
+            "Mediteran": (4, 11.0, 20.0, 18.5, 2.0),
+            "Regosol": (3, 3.5, 36.0, 17.5, 1.5),
+            "Kambisol": (2, 8.0, 30.0, 18.0, 1.5),
+            "Aluvial": (1, 14.0, 25.0, 18.5, 2.0),
+        }
+        for name, (skor, c_kpa, phi_deg, gamma_sat, z) in expected_soils.items():
+            s = get_soil_params(name)
+            self.assertEqual(s["skor"], skor)
+            self.assertEqual(s["c"], c_kpa)
+            self.assertEqual(s["phi"], phi_deg)
+            self.assertEqual(s["gamma_sat"], gamma_sat)
+            self.assertEqual(s["z"], z)
+
+        # 2. Tes 3 titik wajib di API maupun Excel agar selisihnya <= 0,1%:
+        # - Kasus Datar (beta = 0°): Harus mengembalikan 9.99 (bukan error atau NaN).
+        res_flat = calc_infinite_slope_fs(0.0, 9.0, 0.0, 15.0, 19.0, 2.0, 0.75, 0.0, soil_str="Grumusol")
+        self.assertEqual(res_flat["fs"], 9.99)
+        self.assertEqual(res_flat["fs_raw"], 9.99)
+        self.assertEqual(res_flat["koridor"], "KOR-02")
+
+        # - Kasus Landai Grumusol (beta = 5°, c' = 9,0 kPa, phi' = 15°, gamma_sat = 19,0 kN/m3, z = 2,0 m, m = 0,75):
+        #   Harus menghasilkan 4.6050 dengan toleransi selisih <= 0,1% (tampil 4.61 / 4.60).
+        res_grumusol = calc_infinite_slope_fs(5.0, 9.0, 0.0, 15.0, 19.0, 2.0, 0.75, 0.0, soil_str="Grumusol")
+        self.assertLessEqual(abs(res_grumusol["fs_raw"] - 4.6050) / 4.6050, 0.001)
+        self.assertIn(res_grumusol["fs"], (4.60, 4.61))
+        self.assertEqual(res_grumusol["koridor"], "KOR-02")
+
+        # - Kasus Kritis Latosol (beta = 20°, c' = 10,0 kPa, phi' = 18°, gamma_sat = 18,5 kN/m3, z = 2,0 m, m = 0,75):
+        #   Harus menghasilkan 1.3786 dengan toleransi selisih <= 0,1% (tampil 1.38, status Tidak Aman — KOR-04).
+        res_latosol = calc_infinite_slope_fs(20.0, 10.0, 0.0, 18.0, 18.5, 2.0, 0.75, 0.0, soil_str="Latosol")
+        self.assertLessEqual(abs(res_latosol["fs_raw"] - 1.3786) / 1.3786, 0.001)
+        self.assertEqual(res_latosol["fs"], 1.38)
+        self.assertEqual(res_latosol["koridor"], "KOR-04")
+        self.assertEqual(res_latosol["label"], "Tidak Aman — KOR-04")
+        self.assertGreaterEqual(res_latosol["fs_pasca"], 1.50)
 
     def test_invalid_geometry_returns_clear_error(self):
         response = self.client.post(

@@ -656,7 +656,7 @@
       '<div class="spk-score-grid">' +
       scoreCard(custom ? "Nilai dengan bobot pilihan" : "Nilai penilaian", fmt(active.score, 2), activeClass, true) +
       scoreCard("Nilai standar penelitian", fmt(assessment.standard.score, 2), standardClass, false) +
-      scoreCard("Kestabilan lereng terendah (FS)", fsMin != null ? fmt(fsMin, 2) : "-", "Dihitung terpisah", false) +
+      scoreCard("Kestabilan lereng terendah (FS)", fsMin != null ? fmt(fsMin, 2) : "-", "Syarat Aman SNI 8460:2017: FS \u2265 1,50", false) +
       scoreCard("Cakupan data penilaian SPK", coverage != null ? fmtPercent(coverage * 100) : "-", "Persentase area yang memiliki data untuk penilaian kerawanan longsor.", false) +
       "</div>" +
       alerts.join("") +
@@ -750,9 +750,9 @@
       "</span></div>" +
       '<div class="spk-kpi-grid">' +
       kpi("Segmen", String(assessment.location.segmentCount), assessment.location.completeSegmentCount + " segmen lengkap") +
-      kpi("Luas poligon", fmtArea(total), assessment.location.coveredAreaM2 + " m² tercakup") +
+      kpi("Luas poligon", fmtArea(total), assessment.location.coveredAreaM2 + " m\u00b2 tercakup") +
       kpi("Nilai penilaian", fmt(active.score, 2), active.label) +
-      kpi("Kestabilan lereng terendah (FS)", assessment.infiniteSlope.min != null ? fmt(assessment.infiniteSlope.min, 2) : "-", assessment.infiniteSlope.classification ? assessment.infiniteSlope.classification.label : "tidak tersedia") +
+      kpi("Kestabilan lereng terendah (FS)", assessment.infiniteSlope.min != null ? fmt(assessment.infiniteSlope.min, 2) : "-", "Syarat Aman SNI 8460:2017: FS \u2265 1,50") +
       "</div>" +
       '<div class="spk-stack"><div class="spk-section-head"><div><h3>Pembagian tingkat kerawanan (standar penelitian)</h3><p>Proporsi dihitung dari luas area yang diperiksa. Bagian tanpa data tetap ditampilkan.</p></div></div>' +
       '<div class="spk-stack-bar" role="img" aria-label="Distribusi zona">' +
@@ -929,34 +929,35 @@
     const counts = slope.counts || { stabil: 0, kritis: 0, labil: 0 };
     return (
       '<div class="spk-section">' +
-      '<div class="spk-section-head"><div><h3>Kestabilan Lereng (FS)</h3><p>Nilai ini membantu memperkirakan kemampuan lereng dalam menahan kemungkinan pergerakan tanah.</p></div></div>' +
+      '<div class="spk-section-head"><div><h3>Kestabilan Lereng (FS)</h3><p>FS tidak digabungkan ke WLC. Syarat Aman SNI 8460:2017: FS \u2265 1,50.</p></div></div>' +
       '<div class="spk-fs-grid">' +
-      kpi("FS minimum", slope.min != null ? fmt(slope.min, 2) : "-", slope.classification ? slope.classification.label : "tidak tersedia") +
+      kpi("FS minimum", slope.min != null ? fmt(slope.min, 2) : "-", "Syarat Aman SNI 8460:2017: FS \u2265 1,50") +
       kpi("FS rerata", slope.mean != null ? fmt(slope.mean, 2) : "-", "Rata-rata tiap segmen berdasarkan luas") +
       kpi("FS maksimum", slope.max != null ? fmt(slope.max, 2) : "-", "Nilai tertinggi pada segmen") +
       "</div>" +
       '<div class="spk-kpi-grid" style="margin-top:8px;">' +
-      kpi("FS > 1,25", String(counts.stabil || 0), "Segmen pada kategori stabil") +
-      kpi("FS 1,07–1,25", String(counts.kritis || 0), "Segmen pada kategori kritis") +
-      kpi("FS < 1,07", String(counts.labil || 0), "Segmen pada kategori labil") +
+      kpi("FS \u2265 1,50 (Aman)", String(counts.stabil || 0), "Memenuhi SNI 8460:2017") +
+      kpi("FS 1,25\u20131,49 (Tidak Aman)", String(counts.kritis || 0), "Koridor KOR-04") +
+      kpi("FS < 1,25 (Kritis)", String(counts.labil || 0), "Koridor KOR-05 / KOR-06") +
       kpi("Segmen kritis", worst ? escapeHtml(worst.segmentId) : "-", worst ? fmtArea(worst.areaM2) : "tidak tersedia") +
       "</div>" +
       (geo
         ? '<div class="spk-section" style="margin-top:12px;"><div class="spk-section-head"><div><h3>Parameter segmen terlemah</h3><p>' +
           escapeHtml(worst.segmentId) +
-          " • " +
+          " \u2022 " +
           escapeHtml(worst.label || "FS tidak berlabel") +
+          (geo.fsPasca != null ? " \u2022 FS pasca = " + fmt(geo.fsPasca, 2) : "") +
           "</p></div></div>" +
           '<div class="spk-geotech">' +
           metric("c'", geo.cKpa != null ? fmt(geo.cKpa, 1) + " kPa" : "-", "Kohesi") +
-          metric("φ'", geo.phiDeg != null ? fmt(geo.phiDeg, 1) + "°" : "-", "Sudut geser") +
-          metric("γsat", geo.gammaSat != null ? fmt(geo.gammaSat, 1) : "-", "kN/m³") +
+          metric("\u03c6'", geo.phiDeg != null ? fmt(geo.phiDeg, 1) + "\u00b0" : "-", "Sudut geser") +
+          metric("\u03b3sat", geo.gammaSat != null ? fmt(geo.gammaSat, 1) : "-", "kN/m\u00b3") +
           metric("z", geo.zDepth != null ? fmt(geo.zDepth, 2) + " m" : "-", "Kedalaman bidang") +
           metric("m", geo.rasioM != null ? fmt(geo.rasioM, 2) : "-", "Rasio muka air") +
-          metric("q", geo.qKpa != null ? fmt(geo.qKpa, 1) + " kPa" : "-", "Beban permukaan") +
+          metric("FS pasca", geo.fsPasca != null ? fmt(geo.fsPasca, 2) : "-", geo.koridor || "SNI 8460:2017") +
           "</div></div>"
         : "") +
-      '<div class="spk-disclaimer"><b>Ambang FS:</b> stabil &gt; 1,25; kritis 1,07–1,25; labil &lt; 1,07. Ambang ini terpisah dari ambang zona WLC.</div>' +
+      '<div class="spk-disclaimer"><b>Syarat Aman SNI 8460:2017: FS \u2265 1,50.</b> Tidak Aman (KOR-04): 1,25 \u2264 FS &lt; 1,50; Kritis (KOR-05): FS &lt; 1,25. FS tidak digabungkan ke WLC.</div>' +
       '<p class="spk-inline-note">Perhitungan ini merupakan pemeriksaan awal berdasarkan data yang tersedia, bukan jaminan bahwa suatu lokasi aman untuk dibangun. Segmen dengan nilai rendah perlu diperiksa lebih lanjut.</p></div>'
     );
   }

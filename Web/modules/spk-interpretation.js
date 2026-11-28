@@ -47,7 +47,8 @@
 
   function fsRiskSegments(segments) {
     return segments.filter(function (segment) {
-      return /KRITIS|LABIL/i.test(String(segment.fsLabel || ""));
+      const val = finite(segment.fs);
+      return (val != null && val < 1.50) || /KRITIS|LABIL|TIDAK AMAN|KONSERVASI/i.test(String(segment.fsLabel || ""));
     });
   }
 

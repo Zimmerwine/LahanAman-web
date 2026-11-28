@@ -186,12 +186,13 @@ export function buildInspectionFromProperties(props, lat, lng, utm) {
     const ketLereng = String(props.ket_lereng || "Datar – Landai");
 
     const jenisTanah = String(props.ket_tanah || props.jns_tnh || props.jenis_tanah || "Regosol");
-    const skorTanah = Number(props.skor_tanah || props["skor tanah"] || 3);
-    const cPrime = Number(props.c_kpa ?? 3.5);
-    const phiPrime = Number(props.phi_deg ?? 36.0);
-    const gammaSat = Number(props.gamma_sat ?? 17.5);
-    const zDepth = Number(props.z ?? 1.0);
-    const isExpansive = Boolean(props.is_expansive ?? false);
+    const soilEval = evaluateSoil(jenisTanah);
+    const skorTanah = Number(props.skor_tanah || props["skor tanah"] || soilEval.skor);
+    const cPrime = Number(props.c_kpa ?? soilEval.cPrimeKpa);
+    const phiPrime = Number(props.phi_deg ?? soilEval.phiPrimeDeg);
+    const gammaSat = Number(soilEval.gammaSatKnM3);
+    const zDepth = Number(soilEval.zDepthM);
+    const isExpansive = Boolean(props.is_expansive ?? soilEval.isExpansive);
 
     const formasiBatuan = String(props.ket_batuan || props.NAME || props.formasi_batuan || "Endapan Merapi Muda");
     const skorBatuan = Number(props.skor_batuan ?? 2);
@@ -210,7 +211,7 @@ export function buildInspectionFromProperties(props, lat, lng, utm) {
     const triaseInfo = getTriaseColorFromProps(props);
     const warnaHex = triaseInfo.warnaHex;
 
-    const fsVal = props.fs !== undefined ? Number(props.fs) : computeInfiniteSlopeFS(
+    const fsCalc = computeInfiniteSlopeFS(
       betaDeg,
       cPrime,
       crKpa,
@@ -218,32 +219,18 @@ export function buildInspectionFromProperties(props, lat, lng, utm) {
       gammaSat,
       zDepth,
       rasioM,
-      qKpa
-    ).fs;
-
-    let fsStatus = props.fs_status;
-    let fsBadgeColor = "emerald";
-    if (!fsStatus) {
-      if (fsVal > 1.25) {
-        fsStatus = "STABIL";
-        fsBadgeColor = "emerald";
-      } else if (fsVal >= 1.07) {
-        fsStatus = "KRITIS";
-        fsBadgeColor = "amber";
-      } else {
-        fsStatus = "LABIL / LONGSOR";
-        fsBadgeColor = "red";
+      qKpa,
+      {
+        jenisTanah,
+        isExpansive,
+        formasiBatuan,
+        simbolFormasi: props.SYMBOLS || "",
       }
-    } else {
-      fsBadgeColor = fsStatus.includes("STABIL") ? "emerald" : fsStatus.includes("KRITIS") ? "amber" : "red";
-    }
-
-    const fsKeterangan =
-      fsVal > 1.25
-        ? "Lereng aman stabil (FS > 1.25); cocok untuk permukiman dengan pondasi standar."
-        : fsVal >= 1.07
-        ? "Kondisi lereng kritis (1.07 ≤ FS ≤ 1.25); memerlukan mitigasi talud / drainase lereng."
-        : "Lereng labil rawan longsor (FS < 1.07); melampaui batas keseimbangan batas alami!";
+    );
+    const fsVal = fsCalc.fs;
+    const fsStatus = fsCalc.fsStatus;
+    const fsBadgeColor = fsCalc.fsBadgeColor;
+    const fsKeterangan = fsCalc.fsKeterangan;
 
     return {
       lat,

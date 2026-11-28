@@ -81,20 +81,20 @@ BASELINE_SIZE_BEFORE_MB: Dict[str, float] = {
 # ==============================================================================
 DEFAULT_SOIL_GEOTECH: Dict[str, Dict[str, Any]] = {
     "grumosol": {
-        "nama_standar": "Grumosol",
+        "nama_standar": "Grumusol",
         "c": 9.0,
         "phi": 15.0,
         "gamma_sat": 19.0,
-        "z": 2.25,
+        "z": 2.0,
         "is_expansive": True,
         "skor_tanah": 5,
     },
     "grumusol": {
-        "nama_standar": "Grumosol",
+        "nama_standar": "Grumusol",
         "c": 9.0,
         "phi": 15.0,
         "gamma_sat": 19.0,
-        "z": 2.25,
+        "z": 2.0,
         "is_expansive": True,
         "skor_tanah": 5,
     },
@@ -103,7 +103,7 @@ DEFAULT_SOIL_GEOTECH: Dict[str, Dict[str, Any]] = {
         "c": 10.0,
         "phi": 18.0,
         "gamma_sat": 18.5,
-        "z": 2.25,
+        "z": 2.0,
         "is_expansive": False,
         "skor_tanah": 4,
     },
@@ -112,7 +112,7 @@ DEFAULT_SOIL_GEOTECH: Dict[str, Dict[str, Any]] = {
         "c": 11.0,
         "phi": 20.0,
         "gamma_sat": 18.5,
-        "z": 2.50,
+        "z": 2.0,
         "is_expansive": False,
         "skor_tanah": 4,
     },
@@ -121,7 +121,7 @@ DEFAULT_SOIL_GEOTECH: Dict[str, Dict[str, Any]] = {
         "c": 3.5,
         "phi": 36.0,
         "gamma_sat": 17.5,
-        "z": 1.00,
+        "z": 1.5,
         "is_expansive": False,
         "skor_tanah": 3,
     },
@@ -130,7 +130,7 @@ DEFAULT_SOIL_GEOTECH: Dict[str, Dict[str, Any]] = {
         "c": 8.0,
         "phi": 30.0,
         "gamma_sat": 18.0,
-        "z": 2.00,
+        "z": 1.5,
         "is_expansive": False,
         "skor_tanah": 2,
     },
@@ -139,7 +139,7 @@ DEFAULT_SOIL_GEOTECH: Dict[str, Dict[str, Any]] = {
         "c": 14.0,
         "phi": 25.0,
         "gamma_sat": 18.5,
-        "z": 4.00,
+        "z": 2.0,
         "is_expansive": False,
         "skor_tanah": 1,
     },
@@ -355,17 +355,17 @@ def load_geotech_from_dasar_xlsx() -> Dict[str, Dict[str, Any]]:
                     continue
                 j_low = jenis_cell.lower()
                 if "grumusol" in j_low or "grumosol" in j_low:
-                    geotech["grumosol"].update({"c": 9.0, "phi": 15.0, "gamma_sat": 19.0, "z": 2.25, "is_expansive": True})
-                    geotech["grumusol"].update({"c": 9.0, "phi": 15.0, "gamma_sat": 19.0, "z": 2.25, "is_expansive": True})
+                    geotech["grumosol"].update({"c": 9.0, "phi": 15.0, "gamma_sat": 19.0, "z": 2.0, "is_expansive": True, "skor_tanah": 5})
+                    geotech["grumusol"].update({"c": 9.0, "phi": 15.0, "gamma_sat": 19.0, "z": 2.0, "is_expansive": True, "skor_tanah": 5})
                 elif "latosol" in j_low or "mediteran" in j_low:
-                    geotech["latosol"].update({"c": 10.0, "phi": 18.0, "gamma_sat": 18.5, "z": 2.25, "is_expansive": False})
-                    geotech["mediteran"].update({"c": 11.0, "phi": 20.0, "gamma_sat": 18.5, "z": 2.50, "is_expansive": False})
+                    geotech["latosol"].update({"c": 10.0, "phi": 18.0, "gamma_sat": 18.5, "z": 2.0, "is_expansive": False, "skor_tanah": 4})
+                    geotech["mediteran"].update({"c": 11.0, "phi": 20.0, "gamma_sat": 18.5, "z": 2.0, "is_expansive": False, "skor_tanah": 4})
                 elif "regosol" in j_low:
-                    geotech["regosol"].update({"c": 3.5, "phi": 36.0, "gamma_sat": 17.5, "z": 1.00, "is_expansive": False})
+                    geotech["regosol"].update({"c": 3.5, "phi": 36.0, "gamma_sat": 17.5, "z": 1.5, "is_expansive": False, "skor_tanah": 3})
                 elif "kambisol" in j_low:
-                    geotech["kambisol"].update({"c": 8.0, "phi": 30.0, "gamma_sat": 18.0, "z": 2.00, "is_expansive": False})
+                    geotech["kambisol"].update({"c": 8.0, "phi": 30.0, "gamma_sat": 18.0, "z": 1.5, "is_expansive": False, "skor_tanah": 2})
                 elif "aluvial" in j_low:
-                    geotech["aluvial"].update({"c": 14.0, "phi": 25.0, "gamma_sat": 18.5, "z": 4.00, "is_expansive": False})
+                    geotech["aluvial"].update({"c": 14.0, "phi": 25.0, "gamma_sat": 18.5, "z": 2.0, "is_expansive": False, "skor_tanah": 1})
     except Exception as exc:
         print(f"  [WARN] Gagal membaca Dasar.xlsx secara langsung ({exc}), menggunakan nilai standar Dasar.xlsx.")
 

@@ -105,7 +105,7 @@ SOIL_MATRIX_DASAR_XLSX: Dict[str, Dict[str, Any]] = {
         "c_kpa": 11.0,
         "phi_deg": 20.0,
         "gamma_sat": 18.5,
-        "z": 2.5,
+        "z": 2.0,
         "is_expansive": False,
     },
     "regosol": {
@@ -114,7 +114,7 @@ SOIL_MATRIX_DASAR_XLSX: Dict[str, Dict[str, Any]] = {
         "c_kpa": 3.5,
         "phi_deg": 36.0,
         "gamma_sat": 17.5,
-        "z": 1.0,
+        "z": 1.5,
         "is_expansive": False,
     },
     "kambisol": {
@@ -123,7 +123,7 @@ SOIL_MATRIX_DASAR_XLSX: Dict[str, Dict[str, Any]] = {
         "c_kpa": 8.0,
         "phi_deg": 30.0,
         "gamma_sat": 18.0,
-        "z": 2.0,
+        "z": 1.5,
         "is_expansive": False,
     },
     "aluvial": {
@@ -132,7 +132,7 @@ SOIL_MATRIX_DASAR_XLSX: Dict[str, Dict[str, Any]] = {
         "c_kpa": 14.0,
         "phi_deg": 25.0,
         "gamma_sat": 18.5,
-        "z": 4.0,
+        "z": 2.0,
         "is_expansive": False,
     },
 }
@@ -491,33 +491,41 @@ def compute_infinite_slope_fs(
     q_kpa: float,
 ) -> Tuple[float, str, float]:
     """
-    Hitung Faktor Keamanan Lereng Tak Terhingga (Infinite Slope FS):
-    FS = [ (c' + cr) + ((γsat * z - m * γw * z) + q) * (cos β)^2 * tan φ' ] / [ (γsat * z + q) * sin β * cos β ]
-    - Kunci FS = 5.00 bila β <= 2.0°
-    - Batasi FS maksimal 5.00
+    Hitung Faktor Keamanan Lereng Tak Terhingga (Infinite Slope with Seepage):
+    - Penanganan lereng datar (β <= 0.5°): Cegah pembagian nol (ZeroDivisionError), tetapkan FS_awal = 9.99
+    - σ_v = γ_sat * z (kPa)
+    - u = m * 9.81 * z (kPa)
+    - σ'_n = (σ_v - u) * cos^2(β_rad) (kPa)
+    - τ_f = c' + σ'_n * tan(φ_rad) (kPa)
+    - τ_d = σ_v * sin(β_rad) * cos(β_rad) (kPa)
+    - FS_awal = τ_f / τ_d
     """
-    u_kpa = round(rasio_m * GAMMA_W * z_m, 2)
-    if beta_deg <= 2.0:
-        return 5.00, "STABIL", u_kpa
+    m_clamped = min(1.0, max(0.0, float(rasio_m)))
+    u_kpa = round(m_clamped * GAMMA_W * z_m, 2)
+    if beta_deg <= 0.5:
+        return 9.99, "Aman", u_kpa
 
     beta_rad = math.radians(beta_deg)
     phi_rad = math.radians(phi_deg)
     cos_b = math.cos(beta_rad)
     sin_b = math.sin(beta_rad)
-    denom = (gamma_sat * z_m + q_kpa) * sin_b * cos_b
-    if denom <= 1e-6:
-        return 5.00, "STABIL", u_kpa
+    sigma_v = gamma_sat * z_m
+    u_raw = m_clamped * GAMMA_W * z_m
+    tau_d = sigma_v * sin_b * cos_b
+    if tau_d <= 1e-6:
+        return 9.99, "Aman", u_kpa
 
-    normal_eff = ((gamma_sat * z_m - u_kpa) + q_kpa) * (cos_b ** 2)
-    num = (c_kpa + cr_kpa) + normal_eff * math.tan(phi_rad)
-    fs_val = round(min(5.00, max(0.10, num / denom)), 2)
+    sigma_n_prime = (sigma_v - u_raw) * (cos_b ** 2)
+    tau_f = c_kpa + sigma_n_prime * math.tan(phi_rad)
+    fs_raw = min(9.99, max(0.05, tau_f / tau_d))
+    fs_val = round(fs_raw, 2)
 
-    if fs_val > 1.25:
-        status = "STABIL"
-    elif fs_val >= 1.07:
-        status = "KRITIS"
+    if fs_raw >= 1.50:
+        status = "Aman"
+    elif fs_raw >= 1.25:
+        status = "Tidak Aman"
     else:
-        status = "LABIL / LONGSOR"
+        status = "Kritis"
 
     return fs_val, status, u_kpa
 

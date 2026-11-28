@@ -264,13 +264,13 @@
   }
 
   /**
-   * B. Karakteristik Tanah (Pedologi) - Bobot 25% ('Dasar.xlsx'):
-   *    - Grumusol:  Skor 5 (c' = 9.0 kPa,  φ' = 15.0°, γsat = 19.0 kN/m³, z = 2.0 m)
-   *    - Latosol:   Skor 4 (c' = 10.0 kPa, φ' = 18.0°, γsat = 18.5 kN/m³, z = 2.0 m)
-   *    - Mediteran: Skor 4 (c' = 11.0 kPa, φ' = 20.0°, γsat = 18.5 kN/m³, z = 2.5 m)
-   *    - Regosol:   Skor 3 (c' = 3.5 kPa,  φ' = 36.0°, γsat = 17.5 kN/m³, z = 1.0 m)
-   *    - Kambisol:  Skor 2 (c' = 8.0 kPa,  φ' = 30.0°, γsat = 18.0 kN/m³, z = 2.0 m)
-   *    - Aluvial:   Skor 1 (c' = 14.0 kPa, φ' = 25.0°, γsat = 18.5 kN/m³, z = 4.0 m)
+   * B. Karakteristik Tanah (Pedologi) - Bobot 25% (1. Tabel Lookup Parameter Tanah Terkunci Layer 2):
+   *    - Grumusol:  Skor 5 (c' = 9,0 kPa,  φ' = 15,0°, γsat = 19,0 kN/m³, z = 2,0 m)
+   *    - Latosol:   Skor 4 (c' = 10,0 kPa, φ' = 18,0°, γsat = 18,5 kN/m³, z = 2,0 m)
+   *    - Mediteran: Skor 4 (c' = 11,0 kPa, φ' = 20,0°, γsat = 18,5 kN/m³, z = 2,0 m)
+   *    - Regosol:   Skor 3 (c' = 3,5 kPa,  φ' = 36,0°, γsat = 17,5 kN/m³, z = 1,5 m)
+   *    - Kambisol:  Skor 2 (c' = 8,0 kPa,  φ' = 30,0°, γsat = 18,0 kN/m³, z = 1,5 m)
+   *    - Aluvial:   Skor 1 (c' = 14,0 kPa, φ' = 25,0°, γsat = 18,5 kN/m³, z = 2,0 m)
    */
   function evaluasiPedologiTanah(jenisTanahRaw) {
     const raw = String(jenisTanahRaw || "Regosol").trim();
@@ -295,9 +295,9 @@
         cPrime: 11.0,
         phiPrime: 20.0,
         gammaSat: 18.5,
-        zDepth: 2.5,
+        zDepth: 2.0,
         isExpansive: false,
-        sifatRingkas: "Lempung pelapukan batugamping/breksi solum tebal (c'=11,0 kPa, φ'=20,0°, γsat=18,5 kN/m³, z=2,5 m)",
+        sifatRingkas: "Lempung pelapukan batugamping/breksi solum tebal (c'=11,0 kPa, φ'=20,0°, γsat=18,5 kN/m³, z=2,0 m)",
       };
     }
     if (low.includes("latosol") || low.includes("ultisol") || low.includes("andosol") || low.includes("litosol")) {
@@ -319,9 +319,9 @@
         cPrime: 8.0,
         phiPrime: 30.0,
         gammaSat: 18.0,
-        zDepth: 2.0,
+        zDepth: 1.5,
         isExpansive: false,
-        sifatRingkas: "Tanah perkembangan muda berdrainase sedang-baik (c'=8,0 kPa, φ'=30,0°, γsat=18,0 kN/m³, z=2,0 m)",
+        sifatRingkas: "Tanah perkembangan muda berdrainase sedang-baik (c'=8,0 kPa, φ'=30,0°, γsat=18,0 kN/m³, z=1,5 m)",
       };
     }
     if (low.includes("aluvial") && !low.includes("regosol")) {
@@ -331,9 +331,9 @@
         cPrime: 14.0,
         phiPrime: 25.0,
         gammaSat: 18.5,
-        zDepth: 4.0,
+        zDepth: 2.0,
         isExpansive: false,
-        sifatRingkas: "Endapan lempung-lanau dataran banjir kohesif (c'=14,0 kPa, φ'=25,0°, γsat=18,5 kN/m³, z=4,0 m)",
+        sifatRingkas: "Endapan lempung-lanau dataran banjir kohesif (c'=14,0 kPa, φ'=25,0°, γsat=18,5 kN/m³, z=2,0 m)",
       };
     }
     return {
@@ -342,9 +342,9 @@
       cPrime: 3.5,
       phiPrime: 36.0,
       gammaSat: 17.5,
-      zDepth: 1.0,
+      zDepth: 1.5,
       isExpansive: false,
-      sifatRingkas: "Pasir vulkanik lepas berkohesi rendah & sudut geser tinggi (c'=3,5 kPa, φ'=36,0°, γsat=17,5 kN/m³, z=1,0 m)",
+      sifatRingkas: "Pasir vulkanik lepas berkohesi rendah & sudut geser tinggi (c'=3,5 kPa, φ'=36,0°, γsat=17,5 kN/m³, z=1,5 m)",
     };
   }
 
@@ -446,11 +446,20 @@
    *    - 1.500 - 2.000 mm/tahun -> Skor 2 (Rasio m = 0.45)
    *    - <1.500 mm/tahun      -> Skor 1 (Rasio m = 0.30)
    */
+  function validasiRasioM(mOvr, skorHujan) {
+    const mMap = { 1: 0.45, 2: 0.45, 3: 0.60, 4: 0.75, 5: 0.90 };
+    const n = Number(mOvr);
+    if (Number.isFinite(n) && n >= 0.0 && n <= 1.0) return n;
+    if (Number.isFinite(n) && n >= 1 && n <= 5 && Math.abs(n - Math.round(n)) < 1e-6) {
+      return mMap[Math.round(n)] || 0.60;
+    }
+    return mMap[skorHujan] || 0.60;
+  }
+
   function evaluasiCurahHujanTahunan(chMmInput, skorOverride, rasioMOverride) {
     const ch = Number(chMmInput) || 2250;
-    const mMap = { 1: 0.30, 2: 0.45, 3: 0.60, 4: 0.75, 5: 0.90 };
     const kelasMap = {
-      1: "< 1.500 mm/tahun (Sangat Rendah | m = 0,30)",
+      1: "< 1.500 mm/tahun (Sangat Rendah | m = 0,45)",
       2: "1.500 – 2.000 mm/tahun (Rendah | m = 0,45)",
       3: "2.001 – 2.500 mm/tahun (Sedang | m = 0,60)",
       4: "2.501 – 3.000 mm/tahun (Tinggi | m = 0,75)",
@@ -469,8 +478,7 @@
       skor = Math.round(sOvr);
     }
 
-    const mOvr = Number(rasioMOverride);
-    const mRatio = Number.isFinite(mOvr) && mOvr > 0 && mOvr <= 1.0 ? mOvr : mMap[skor] || 0.60;
+    const mRatio = validasiRasioM(rasioMOverride, skor);
 
     return {
       skor,
@@ -573,77 +581,215 @@
   }
 
   /**
-   * 3. Formula Analitis Faktor Keamanan (FS) Lereng Tak Terhingga (Infinite Slope):
-   *    FS = [ (c' + cr) + ((γsat * z - m * γw * z) + q) * (cos β)^2 * tan φ' ] / [ (γsat * z + q) * sin β * cos β ]
-   *    - γw = 9.81 kN/m³
-   *    - Jika β <= 2.0°, kunci FS = 5.00 karena topografi datar murni
-   *    - Batasi nilai FS maksimal di angka 5.00
-   *    - Klasifikasi Kestabilan (Wicaksono & Khafid, 2022 & SNI):
-   *      * FS > 1.25        -> STABIL (Badge Hijau)
-   *      * 1.07 <= FS <= 1.25 -> KRITIS (Badge Kuning)
-   *      * FS < 1.07        -> LABIL / LONGSOR (Badge Merah)
+   * 2. Hitung FS_awal (Infinite Slope with Seepage) & 3. Penentuan FS_pasca sesuai Koridor SPK (Target SNI 8460:2017 >= 1,50):
+   *    - Penanganan lereng datar (β <= 0,5°): Cegah pembagian nol (ZeroDivisionError). Jika β <= 0,5°, langsung tetapkan FS_awal = 9.99
+   *      (stabil gravitasi; khusus Grumusol tetap diarahkan ke KOR-02 untuk perbaikan tanah ekspansif).
+   *    - σ_v = γ_sat * z (kPa)
+   *    - u = m * 9,81 * z (kPa)
+   *    - σ'_n = (σ_v - u) * cos^2(β_rad) (kPa)
+   *    - τ_f = c' + σ'_n * tan(φ_rad) (kPa)
+   *    - τ_d = σ_v * sin(β_rad) * cos(β_rad) (kPa)
+   *    - FS_awal = τ_f / τ_d
    */
-  function hitungInfiniteSlopeFS(lerengDerajat, pedologi, hujan, tutupan) {
+  const SNI_FS_TARGET_LABEL = "Syarat Aman SNI 8460:2017: FS \u2265 1,50";
+
+  function hitungRawInfiniteSlopeFS(betaDegInput, cPrime, phiPrime, gammaSat, zDepth, mRatioInput) {
+    const betaDeg = Math.max(0.0, Number(betaDegInput) || 0.0);
+    const mRatio = validasiRasioM(mRatioInput, 3);
+    const sigmaV = gammaSat * zDepth;
+    const uRaw = mRatio * GAMMA_W * zDepth;
+    const uKpa = Number(uRaw.toFixed(2));
+    const phiRad = (phiPrime * Math.PI) / 180.0;
+
+    if (betaDeg <= 0.5) {
+      return {
+        fsRaw: 9.99,
+        fs: 9.99,
+        uKpa,
+        sigmaV: Number(sigmaV.toFixed(2)),
+        sigmaNPrime: Number((sigmaV - uRaw).toFixed(4)),
+        tauF: Number((cPrime + (sigmaV - uRaw) * Math.tan(phiRad)).toFixed(4)),
+        tauD: 0.0,
+      };
+    }
+
+    const betaRad = (betaDeg * Math.PI) / 180.0;
+    const cosB = Math.cos(betaRad);
+    const sinB = Math.sin(betaRad);
+    const tanPhi = Math.tan(phiRad);
+
+    const tauD = sigmaV * sinB * cosB;
+    if (tauD <= 1e-6) {
+      return {
+        fsRaw: 9.99,
+        fs: 9.99,
+        uKpa,
+        sigmaV: Number(sigmaV.toFixed(2)),
+        sigmaNPrime: Number(((sigmaV - uRaw) * (cosB * cosB)).toFixed(4)),
+        tauF: Number((cPrime + (sigmaV - uRaw) * (cosB * cosB) * tanPhi).toFixed(4)),
+        tauD: 0.0,
+      };
+    }
+
+    const sigmaNPrime = (sigmaV - uRaw) * (cosB * cosB);
+    const tauF = cPrime + sigmaNPrime * tanPhi;
+    const fsRaw = Math.min(9.99, Math.max(0.05, tauF / tauD));
+    return {
+      fsRaw: Number(fsRaw.toFixed(4)),
+      fs: Number(fsRaw.toFixed(2)),
+      uKpa,
+      sigmaV: Number(sigmaV.toFixed(2)),
+      sigmaNPrime: Number(sigmaNPrime.toFixed(4)),
+      tauF: Number(tauF.toFixed(4)),
+      tauD: Number(tauD.toFixed(4)),
+    };
+  }
+
+  function tentukanKoridorSpk(betaDegInput, fsAwalRaw, pedologi, litologi) {
+    const betaAwal = Math.max(0.0, Number(betaDegInput) || 0.0);
+    const cPrime = Number(pedologi.cPrime) || 3.5;
+    const phiPrime = Number(pedologi.phiPrime) || 30.0;
+    const gammaSat = Number(pedologi.gammaSat) || 18.0;
+    const zDepth = Number(pedologi.zDepth) || 2.0;
+    const isExpansive =
+      Boolean(pedologi.isExpansive) ||
+      /grumusol|grumosol|vertisol/i.test(String(pedologi.nama || ""));
+    const rockText = `${(litologi && litologi.nama) || ""} ${(litologi && litologi.litologi) || ""}`.toLowerCase();
+    const isNa =
+      /\bna\b/.test(rockText) ||
+      rockText.includes("(na)") ||
+      rockText.includes("endapan longsoran") ||
+      rockText.includes("avalanche");
+
+    if (betaAwal > 35.0 || isNa) {
+      return {
+        koridor: "KOR-06",
+        betaPasca: null,
+        mPasca: null,
+        fsPascaRaw: null,
+        fsPasca: null,
+        rekomendasiKoridor:
+          "KOR-06 (\u03B2 > 35\u00B0 atau endapan longsoran na): Tidak direkomendasikan untuk bangunan (status Zona Konservasi).",
+      };
+    }
+    if (betaAwal > 25.0 || fsAwalRaw < 1.25) {
+      let betaPasca = Math.min(betaAwal, 14.0);
+      const mPasca = 0.45;
+      let resP = hitungRawInfiniteSlopeFS(betaPasca, cPrime, phiPrime, gammaSat, zDepth, mPasca);
+      while (resP.fsRaw < 1.50 && betaPasca > 0.5) {
+        betaPasca = Number(Math.max(0.5, betaPasca - 0.5).toFixed(2));
+        resP = hitungRawInfiniteSlopeFS(betaPasca, cPrime, phiPrime, gammaSat, zDepth, mPasca);
+      }
+      return {
+        koridor: "KOR-05",
+        betaPasca,
+        mPasca,
+        fsPascaRaw: resP.fsRaw,
+        fsPasca: resP.fs,
+        rekomendasiKoridor:
+          "KOR-05 (25\u00B0 < \u03B2 \u2264 35\u00B0 atau FS_awal < 1,25): Terasering + Dinding Penahan Tanah (DPT) dengan lereng antar-teras memenuhi FS_pasca \u2265 1,50 dan desain DPT memenuhi FK_geser \u2265 1,50 serta FK_guling \u2265 2,00 (SNI 8460:2017).",
+      };
+    }
+    if (betaAwal > 15.0 || fsAwalRaw < 1.50) {
+      let betaPasca = Math.min(betaAwal, 14.0);
+      const mPasca = 0.45;
+      let resP = hitungRawInfiniteSlopeFS(betaPasca, cPrime, phiPrime, gammaSat, zDepth, mPasca);
+      while (resP.fsRaw < 1.50 && betaPasca > 0.5) {
+        betaPasca = Number(Math.max(0.5, betaPasca - 0.5).toFixed(2));
+        resP = hitungRawInfiniteSlopeFS(betaPasca, cPrime, phiPrime, gammaSat, zDepth, mPasca);
+      }
+      return {
+        koridor: "KOR-04",
+        betaPasca,
+        mPasca,
+        fsPascaRaw: resP.fsRaw,
+        fsPasca: resP.fs,
+        rekomendasiKoridor:
+          "KOR-04 (15\u00B0 < \u03B2 \u2264 25\u00B0 atau 1,25 \u2264 FS_awal < 1,50): Cut & fill terasering ke \u03B2_pasca = 14\u00B0 (atau diturunkan bertahap hingga FS_pasca \u2265 1,50) + sub-drain (m_pasca = 0,45).",
+      };
+    }
+    if (betaAwal > 8.0) {
+      const betaPasca = Math.min(betaAwal, 10.0);
+      const mPasca = 0.45;
+      const resP = hitungRawInfiniteSlopeFS(betaPasca, cPrime, phiPrime, gammaSat, zDepth, mPasca);
+      return {
+        koridor: "KOR-03",
+        betaPasca,
+        mPasca,
+        fsPascaRaw: resP.fsRaw,
+        fsPasca: resP.fs,
+        rekomendasiKoridor:
+          "KOR-03 (8\u00B0 < \u03B2 \u2264 15\u00B0): Pelandaian ringan ke \u03B2_pasca = min(\u03B2_awal, 10\u00B0) + drainase (m_pasca = 0,45).",
+      };
+    }
+    const koridor = isExpansive ? "KOR-02" : "KOR-01";
+    const betaPasca = betaAwal;
+    const mPasca = 0.45;
+    const resP = hitungRawInfiniteSlopeFS(betaPasca, cPrime, phiPrime, gammaSat, zDepth, mPasca);
+    return {
+      koridor,
+      betaPasca,
+      mPasca,
+      fsPascaRaw: resP.fsRaw,
+      fsPasca: resP.fs,
+      rekomendasiKoridor: isExpansive
+        ? "KOR-02 (\u03B2 \u2264 8\u00B0, Grumusol Ekspansif): \u03B2_pasca = \u03B2_awal, drainase keliling menurunkan kejenuhan ke m_pasca = 0,45 + perbaikan tanah ekspansif."
+        : "KOR-01 (\u03B2 \u2264 8\u00B0): \u03B2_pasca = \u03B2_awal, drainase keliling menurunkan kejenuhan ke m_pasca = 0,45.",
+    };
+  }
+
+  function hitungInfiniteSlopeFS(lerengDerajat, pedologi, hujan, tutupan, litologi) {
     const betaDeg = Math.max(0.0, Number(lerengDerajat) || 0.0);
     const cPrime = Number(pedologi.cPrime) || 3.5;
     const crKpa = Number(tutupan.crKpa ?? 0.0);
     const phiPrime = Number(pedologi.phiPrime) || 30.0;
     const gammaSat = Number(pedologi.gammaSat) || 18.0;
     const zDepth = Number(pedologi.zDepth) || 2.0;
-    const mRatio = Number(hujan.mRatio) || 0.60;
+    const mRatio = validasiRasioM(hujan.mRatio, hujan.skor || 3);
     const qKpa = Number(tutupan.qKpa ?? 15.0);
 
-    // Tegangan air pori u = m * γw * z (kPa)
-    const uKpa = Number((mRatio * GAMMA_W * zDepth).toFixed(2));
+    const raw = hitungRawInfiniteSlopeFS(betaDeg, cPrime, phiPrime, gammaSat, zDepth, mRatio);
+    const kor = tentukanKoridorSpk(betaDeg, raw.fsRaw, pedologi, litologi);
 
-    let fsVal = 5.00;
-    if (betaDeg <= 2.0) {
-      fsVal = 5.00;
-    } else {
-      const betaRad = (betaDeg * Math.PI) / 180.0;
-      const phiRad = (phiPrime * Math.PI) / 180.0;
-      const cosB = Math.cos(betaRad);
-      const sinB = Math.sin(betaRad);
-      const tanPhi = Math.tan(phiRad);
-
-      const totalCohesion = cPrime + crKpa;
-      const effectiveNormal = ((gammaSat * zDepth - mRatio * GAMMA_W * zDepth) + qKpa) * (cosB * cosB);
-      const resistingStress = totalCohesion + Math.max(0.0, effectiveNormal) * tanPhi;
-      const drivingStress = (gammaSat * zDepth + qKpa) * sinB * cosB;
-
-      if (drivingStress <= 1e-6) {
-        fsVal = 5.00;
-      } else {
-        fsVal = Number(Math.min(5.00, Math.max(0.05, resistingStress / drivingStress)).toFixed(2));
-      }
-    }
-
-    let status = "STABIL";
+    let status = `Aman \u2014 ${kor.koridor}`;
     let statusKode = "stabil";
     let warnaHex = "#2E7D32";
-    let keterangan = "Lereng stabil terhadap gelincir translasi (FS > 1,25 — Wicaksono & Khafid, 2022 & SNI 8291:2016).";
 
-    if (fsVal < 1.07) {
-      status = "LABIL / LONGSOR";
+    if (kor.koridor === "KOR-06") {
+      status = `Zona Konservasi \u2014 ${kor.koridor}`;
       statusKode = "labil";
       warnaHex = "#D32F2F";
-      keterangan = "Gaya penggerak melampaui tahanan geser efektif; lereng labil dan rawan longsor saat jenuh (FS < 1,07).";
-    } else if (fsVal <= 1.25) {
-      status = "KRITIS";
+    } else if (raw.fsRaw < 1.25) {
+      status = `Kritis \u2014 ${kor.koridor}`;
+      statusKode = "labil";
+      warnaHex = "#D32F2F";
+    } else if (raw.fsRaw < 1.50) {
+      status = `Tidak Aman \u2014 ${kor.koridor}`;
       statusKode = "rawan";
       warnaHex = "#FB8C00";
-      keterangan = "Kestabilan lereng berada pada ambang kritis / rawan rayapan saat jenuh air pori (1,07 ≤ FS ≤ 1,25).";
     }
 
+    const keterangan = `${SNI_FS_TARGET_LABEL}. ${kor.rekomendasiKoridor}`;
+
     return {
-      fs: fsVal,
+      fs: raw.fs,
+      fsRaw: raw.fsRaw,
+      fsAwal: raw.fs,
+      fsAwalRaw: raw.fsRaw,
+      fsPasca: kor.fsPasca,
+      fsPascaRaw: kor.fsPascaRaw,
+      koridor: kor.koridor,
+      betaPasca: kor.betaPasca,
+      mPasca: kor.mPasca,
+      rekomendasiKoridor: kor.rekomendasiKoridor,
+      sniLabel: SNI_FS_TARGET_LABEL,
       cPrime,
       crKpa,
       phiPrime,
       gammaSat,
       zDepth,
       mRatio,
-      uKpa,
+      uKpa: raw.uKpa,
       qKpa,
       status,
       statusKode,
@@ -670,7 +816,7 @@
       (kontribusiLereng + kontribusiTanah + kontribusiBatuan + kontribusiHujan + kontribusiLahan).toFixed(2)
     );
 
-    const fsInfo = hitungInfiniteSlopeFS(lereng.derajat, pedologi, hujan, tutupan);
+    const fsInfo = hitungInfiniteSlopeFS(lereng.derajat, pedologi, hujan, tutupan, litologi);
 
     let kode = "hijau";
     let hex = TRIAGE_HEX.hijau;
@@ -746,18 +892,15 @@
     triase.badge = `SKOR ${numSkor.toFixed(2)} — ${zonaKode}`;
   }
 
-  function terapkanFsInfo(triase, fs, label, hex, keterangan) {
+  function terapkanFsInfo(triase, fs, label, hex, keterangan, extra = {}) {
     const numFs = Number(fs);
     if (!Number.isFinite(numFs)) return;
 
-    const status = label || (numFs > 1.25 ? "STABIL" : (numFs >= 1.07 ? "KRITIS" : "LABIL / LONGSOR"));
-    const statusKode = status.includes("LABIL") ? "labil" : (status.includes("KRITIS") ? "rawan" : "stabil");
-    const warnaHex = hex || (numFs > 1.25 ? "#10b981" : (numFs >= 1.07 ? "#f59e0b" : "#ef4444"));
-    const ket = keterangan || (numFs > 1.25
-      ? "Lereng stabil terhadap gelincir translasi (FS > 1,25)."
-      : (numFs >= 1.07
-        ? "Kestabilan lereng berada pada ambang kritis / rawan rayapan saat jenuh air pori (1,07 ≤ FS ≤ 1,25)."
-        : "Gaya penggerak melampaui tahanan geser efektif; lereng labil dan rawan longsor saat jenuh (FS < 1,07)."));
+    const kor = extra.koridor || (triase.fsInfo && triase.fsInfo.koridor) || "KOR-01";
+    const status = label || (numFs >= 1.50 ? `Aman \u2014 ${kor}` : (numFs >= 1.25 ? `Tidak Aman \u2014 ${kor}` : `Kritis \u2014 ${kor}`));
+    const statusKode = /KRITIS|LABIL|KONSERVASI/i.test(status) ? "labil" : (/TIDAK AMAN/i.test(status) ? "rawan" : "stabil");
+    const warnaHex = hex || (numFs >= 1.50 ? "#10b981" : (numFs >= 1.25 ? "#f59e0b" : "#ef4444"));
+    const ket = keterangan || `${SNI_FS_TARGET_LABEL}. ${(triase.fsInfo && triase.fsInfo.rekomendasiKoridor) || ""}`;
 
     triase.fs = numFs;
     triase.fsTampil = numFs.toFixed(2);
@@ -765,6 +908,12 @@
     triase.fsHex = warnaHex;
     if (triase.fsInfo) {
       triase.fsInfo.fs = numFs;
+      triase.fsInfo.fsAwal = extra.fs_awal != null ? Number(extra.fs_awal) : numFs;
+      if (extra.fs_pasca !== undefined) triase.fsInfo.fsPasca = extra.fs_pasca != null ? Number(extra.fs_pasca) : null;
+      if (extra.koridor) triase.fsInfo.koridor = extra.koridor;
+      if (extra.beta_pasca !== undefined) triase.fsInfo.betaPasca = extra.beta_pasca;
+      if (extra.m_pasca !== undefined) triase.fsInfo.mPasca = extra.m_pasca;
+      if (extra.rekomendasi_koridor) triase.fsInfo.rekomendasiKoridor = extra.rekomendasi_koridor;
       triase.fsInfo.status = status;
       triase.fsInfo.statusKode = statusKode;
       triase.fsInfo.warnaHex = warnaHex;
@@ -977,7 +1126,7 @@
       adminProps.jenis_tanah ||
       "Regosol";
     const pedologi = evaluasiPedologiTanah(jenisTanahStr);
-      if (Number(tnProps.skor_tanah || tnProps["skor tanah"] || krProps.skor_tanah || krProps["skor tanah"]) >= 1) {
+    if (Number(tnProps.skor_tanah || tnProps["skor tanah"] || krProps.skor_tanah || krProps["skor tanah"]) >= 1) {
       pedologi.skor = Number(tnProps.skor_tanah || tnProps["skor tanah"] || krProps.skor_tanah || krProps["skor tanah"]);
     }
     if (Number(tnProps.c_kpa || krProps.c_kpa) > 0) {
@@ -985,12 +1134,6 @@
     }
     if (Number(tnProps.phi_deg || krProps.phi_deg) > 0) {
       pedologi.phiPrime = Number(tnProps.phi_deg || krProps.phi_deg);
-    }
-    if (Number(tnProps.gamma_sat || krProps.gamma_sat) > 0) {
-      pedologi.gammaSat = Number(tnProps.gamma_sat || krProps.gamma_sat);
-    }
-    if (Number(tnProps.z_depth || krProps.z_depth) > 0) {
-      pedologi.zDepth = Number(tnProps.z_depth || krProps.z_depth);
     }
 
     // 3. Litologi & Formasi Geologi berbasis Dasar.xlsx
@@ -1055,14 +1198,11 @@
       triase.badge = `SKOR ${Number(triase.skorAkhir).toFixed(2)} — ${zStyle.zonaKode}`;
     }
 
-    const rawFs = (rawProps && rawProps.fs != null)
-      ? rawProps.fs
-      : (krProps.fs ?? adminProps.fs);
-    if (rawFs !== undefined && rawFs !== null) {
+    if (rawProps && rawProps.fs != null) {
       terapkanFsInfo(
         triase,
-        rawFs,
-        (rawProps && rawProps.fs_status) || krProps.fs_status || adminProps.fs_status
+        rawProps.fs,
+        rawProps.fs_status || rawProps.fs_label
       );
     }
 
@@ -1689,13 +1829,13 @@
       <section class="inspector-card slope-card">
         <div class="inspector-card-header">
           <h3>Stabilitas lereng</h3>
-          <span class="badge-count">Infinite slope</span>
+          <span class="badge-count">${fsInfo.koridor || "SNI 8460:2017"}</span>
         </div>
         <div class="inspector-card-body">
           <div class="stability-score-row">
             <div>
-              <div class="fs-value" style="color:${fsColor};">${formatAngka(fsInfo.fs, 2)} <small>FS</small></div>
-              <div class="fs-label">Faktor keamanan lereng pada titik terpilih</div>
+              <div class="fs-value" style="color:${fsColor};">${formatAngka(fsInfo.fs, 2)} <small>FS<sub>awal</sub></small>${fsInfo.fsPasca != null ? ` <span style="font-size:13px;color:#059669;">&rarr; ${formatAngka(fsInfo.fsPasca, 2)} <small>FS<sub>pasca</sub></small></span>` : ""}</div>
+              <div class="fs-label">${SNI_FS_TARGET_LABEL}</div>
             </div>
             <span class="status-chip ${fsInfo.statusKode}">${fsInfo.status}</span>
           </div>
@@ -1703,9 +1843,9 @@
             <div class="parameter-fill" style="width:${fsBarPct}%;background:${fsColor};"></div>
           </div>
           <div class="stability-scale">
-            <div class="scale-segment">&lt; 1,07<br />labil</div>
-            <div class="scale-segment">1,07–1,25<br />kritis</div>
-            <div class="scale-segment">&gt; 1,25<br />stabil</div>
+            <div class="scale-segment">&lt; 1,25<br />kritis (KOR-05)</div>
+            <div class="scale-segment">1,25–1,49<br />tidak aman (KOR-04)</div>
+            <div class="scale-segment">&ge; 1,50<br />aman SNI 8460:2017</div>
           </div>
           <div class="stability-note">${fsInfo.keterangan}</div>
         </div>
@@ -1834,8 +1974,8 @@
             <dd style="color:${triase.fsInfo.warnaHex};">${formatAngka(triase.fsInfo.fs, 2)} · ${triase.fsInfo.status}</dd>
           </div>
           <div>
-            <dt>Parameter tanah</dt>
-            <dd>${pedologi.nama}</dd>
+            <dt>Batas Acuan</dt>
+            <dd>${SNI_FS_TARGET_LABEL}</dd>
           </div>
         </dl>
         <p class="map-popup-note">
@@ -1963,7 +2103,8 @@
               bData.triase.fs,
               bData.triase.fs_label,
               bData.triase.fs_warna_hex,
-              bData.triase.fs_desc
+              bData.triase.fs_desc,
+              bData.triase
             );
           }
           info.aiAdvisor = buatRekomendasiGeoteknik(info);
@@ -2718,11 +2859,11 @@
     if (state.activeLegendMode === "tanah") {
       el.innerHTML = `
         <div class="legend-title">Karakteristik tanah · pedologi · bobot 25%</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[5]};"></span><span><b>Skor 5</b>: Grumusol (c'=9 kPa, φ'=15°, γsat=19, z=2m)</span></div>
-        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[4]};"></span><span><b>Skor 4</b>: Latosol (c'=10, φ'=18°) &amp; Mediteran (c'=11, φ'=20°)</span></div>
-        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[3]};"></span><span><b>Skor 3</b>: Regosol (c'=3,5 kPa, φ'=36°, γsat=17,5, z=1m)</span></div>
-        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[2]};"></span><span><b>Skor 2</b>: Kambisol (c'=8 kPa, φ'=30°, γsat=18, z=2m)</span></div>
-        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[1]};"></span><span><b>Skor 1</b>: Aluvial (c'=14 kPa, φ'=25°, γsat=18,5, z=4m)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[5]};"></span><span><b>Skor 5</b>: Grumusol (c'=9,0 kPa, φ'=15,0°, γsat=19,0, z=2,0 m)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[4]};"></span><span><b>Skor 4</b>: Latosol (c'=10,0, φ'=18,0°, z=2,0 m) &amp; Mediteran (c'=11,0, φ'=20,0°, z=2,0 m)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[3]};"></span><span><b>Skor 3</b>: Regosol (c'=3,5 kPa, φ'=36,0°, γsat=17,5, z=1,5 m)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[2]};"></span><span><b>Skor 2</b>: Kambisol (c'=8,0 kPa, φ'=30,0°, γsat=18,0, z=1,5 m)</span></div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${SCORE_COLORS[1]};"></span><span><b>Skor 1</b>: Aluvial (c'=14,0 kPa, φ'=25,0°, γsat=18,5, z=2,0 m)</span></div>
       `;
       return;
     }

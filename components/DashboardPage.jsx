@@ -133,23 +133,23 @@ export function DashboardPage() {
     const skorAkhir = Number(p.skor_akhir ?? p.skor_total ?? 2.45);
     const betaDeg = Number(p.lereng_derajat ?? 3.5);
     const slopePct = Number(p.lereng_persen ?? 6.1);
-    const fsVal = Number(p.fs ?? (betaDeg <= 2.0 ? 5.0 : 2.5));
+    const fsVal = Number(p.fs ?? (betaDeg <= 0.5 ? 9.99 : 2.5));
 
     let fsStatus = p.fs_status;
     let fsBadgeColor = "emerald";
     if (!fsStatus) {
-      if (fsVal > 1.25) {
-        fsStatus = "STABIL";
+      if (fsVal >= 1.50) {
+        fsStatus = "Aman — KOR-01";
         fsBadgeColor = "emerald";
-      } else if (fsVal >= 1.07) {
-        fsStatus = "KRITIS";
+      } else if (fsVal >= 1.25) {
+        fsStatus = "Tidak Aman — KOR-04";
         fsBadgeColor = "amber";
       } else {
-        fsStatus = "LABIL / LONGSOR";
+        fsStatus = "Kritis — KOR-05";
         fsBadgeColor = "red";
       }
     } else {
-      fsBadgeColor = fsStatus.includes("STABIL") ? "emerald" : fsStatus.includes("KRITIS") ? "amber" : "red";
+      fsBadgeColor = /Aman/i.test(fsStatus) && !/Tidak Aman/i.test(fsStatus) ? "emerald" : /Tidak Aman/i.test(fsStatus) ? "amber" : "red";
     }
 
     const zonaKode = skorAkhir < 2.20 ? "HIJAU" : skorAkhir <= 3.40 ? "KUNING" : "MERAH";
@@ -180,12 +180,13 @@ export function DashboardPage() {
         fs: fsVal,
         fsStatus,
         fsBadgeColor,
+        sniLabel: "Syarat Aman SNI 8460:2017: FS ≥ 1,50",
         fsKeterangan:
-          fsVal > 1.25
-            ? "Lereng stabil aman (FS > 1.25); cocok untuk permukiman dengan pondasi standar."
-            : fsVal >= 1.07
-            ? "Kondisi lereng kritis (1.07 ≤ FS ≤ 1.25); memerlukan perkuatan dinding penahan tanah."
-            : "Lereng labil rawan longsor (FS < 1.07); melampaui kapasitas geser tanah penutup!",
+          fsVal >= 1.50
+            ? "Syarat Aman SNI 8460:2017: FS ≥ 1,50. Lereng memenuhi standar keamanan."
+            : fsVal >= 1.25
+            ? "Syarat Aman SNI 8460:2017: FS ≥ 1,50. KOR-04: Cut & fill terasering ke β_pasca = 14° + sub-drain (m_pasca = 0,45)."
+            : "Syarat Aman SNI 8460:2017: FS ≥ 1,50. KOR-05: Terasering + Dinding Penahan Tanah (DPT) memenuhi FK_geser ≥ 1,50 & FK_guling ≥ 2,00.",
         parameters: {
           lereng: {
             betaDeg,
@@ -204,9 +205,9 @@ export function DashboardPage() {
             cPrimeKpa: Number(p.c_kpa ?? 3.5),
             phiPrimeDeg: Number(p.phi_deg ?? 36.0),
             gammaSatKnM3: Number(p.gamma_sat ?? 17.5),
-            zDepthM: Number(p.z ?? 1.0),
+            zDepthM: Number(p.z ?? 1.5),
             isExpansive: Boolean(p.is_expansive ?? false),
-            keteranganGeoteknik: `c'=${Number(p.c_kpa ?? 3.5).toFixed(1)} kPa, φ'=${Number(p.phi_deg ?? 36.0).toFixed(1)}°, γsat=${Number(p.gamma_sat ?? 17.5).toFixed(1)} kN/m³, z=${Number(p.z ?? 1.0).toFixed(1)} m`,
+            keteranganGeoteknik: `c'=${Number(p.c_kpa ?? 3.5).toFixed(1)} kPa, φ'=${Number(p.phi_deg ?? 36.0).toFixed(1)}°, γsat=${Number(p.gamma_sat ?? 17.5).toFixed(1)} kN/m³, z=${Number(p.z ?? 1.5).toFixed(1)} m`,
           },
           batuan: {
             formasiBatuan: p.formasi_batuan || p.ket_batuan || "Endapan Merapi Muda",
@@ -487,6 +488,9 @@ export function DashboardPage() {
                       </span>
                       <span className="font-mono text-2xl font-extrabold text-slate-900">
                         {selectedInspection.analysis.fs.toFixed(2)}
+                      </span>
+                      <span className="block text-[10.5px] font-bold text-blue-700 mt-0.5">
+                        Syarat Aman SNI 8460:2017: FS ≥ 1,50
                       </span>
                     </div>
                     <span

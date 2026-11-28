@@ -334,7 +334,10 @@
     ) {
       return null;
     }
-    const raw = props[SCORE_FIELD_MAP[key]];
+    let raw = props[SCORE_FIELD_MAP[key]];
+    if (raw == null && key === "soil") {
+      raw = props["skor tanah"];
+    }
     if (raw == null) return null;
     const number = Number(raw);
     return Number.isInteger(number) && number >= 1 && number <= 5 ? number : null;
@@ -361,20 +364,26 @@
   function readFs(segment) {
     const props = segmentProperties(segment);
     return {
-      value: toFiniteNumber(props.fs),
+      value: toFiniteNumber(props.fs != null ? props.fs : props.fs_awal),
+      fsAwal: toFiniteNumber(props.fs_awal != null ? props.fs_awal : props.fs),
+      fsPasca: toFiniteNumber(props.fs_pasca),
+      koridor: props.koridor != null ? String(props.koridor) : null,
+      betaPasca: toFiniteNumber(props.beta_pasca),
+      mPasca: toFiniteNumber(props.m_pasca),
+      rekomendasiKoridor: props.rekomendasi_koridor != null ? String(props.rekomendasi_koridor) : null,
       label: props.fs_label != null ? String(props.fs_label) : null,
     };
   }
 
   function fsClass(fs) {
     if (!Number.isFinite(fs)) return null;
-    if (fs > 1.25) {
-      return { code: "stabil", label: "STABIL", description: "FS > 1,25", color: "#10b981" };
+    if (fs >= 1.50) {
+      return { code: "stabil", label: "Aman (SNI 8460:2017: FS \u2265 1,50)", description: "Syarat Aman SNI 8460:2017: FS \u2265 1,50", color: "#10b981" };
     }
-    if (fs >= 1.07) {
-      return { code: "kritis", label: "KRITIS", description: "1,07 <= FS <= 1,25", color: "#f59e0b" };
+    if (fs >= 1.25) {
+      return { code: "kritis", label: "Tidak Aman (1,25 \u2264 FS < 1,50)", description: "1,25 <= FS < 1,50", color: "#f59e0b" };
     }
-    return { code: "labil", label: "LABIL / LONGSOR", description: "FS < 1,07", color: "#ef4444" };
+    return { code: "labil", label: "Kritis (FS < 1,25)", description: "FS < 1,25", color: "#ef4444" };
   }
 
   function summarizeActualValues(key, segments, landUse) {
@@ -562,6 +571,12 @@
         rawScores: scores,
         actual: actual,
         fs: fs.value,
+        fsAwal: fs.fsAwal,
+        fsPasca: fs.fsPasca,
+        koridor: fs.koridor,
+        betaPasca: fs.betaPasca,
+        mPasca: fs.mPasca,
+        rekomendasiKoridor: fs.rekomendasiKoridor,
         fsLabel: fs.label || (fs.value != null ? fsClass(fs.value).label : null),
         geotech: {
           cKpa: toFiniteNumber(props.c_kpa),
@@ -572,6 +587,11 @@
           rasioM: toFiniteNumber(props.rasio_m),
           qKpa: toFiniteNumber(props.q_kpa),
           uKpa: toFiniteNumber(props.u_kpa),
+          fsAwal: fs.fsAwal,
+          fsPasca: fs.fsPasca,
+          koridor: fs.koridor,
+          betaPasca: fs.betaPasca,
+          mPasca: fs.mPasca,
         },
         standardScore: standardScore,
         standardZone: standardZone,
@@ -844,7 +864,8 @@
           : null,
         counts: fsCounts,
         classification: fsMinRow ? fsClass(fsMinRow.fs) : null,
-        thresholds: { stableAbove: 1.25, criticalMin: 1.07 },
+        thresholds: { stableAbove: 1.50, criticalMin: 1.25 },
+        sniLabel: "Syarat Aman SNI 8460:2017: FS \u2265 1,50",
       },
       segments: segmentRows,
       metadata: {

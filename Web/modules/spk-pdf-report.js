@@ -1224,9 +1224,7 @@
             fmtNum(slope.mean, 2) +
             " | Maks " +
             fmtNum(slope.max, 2) +
-            " (" +
-            fsClassLabel +
-            ")",
+            " (Syarat Aman SNI 8460:2017: FS >= 1,50)",
           metric2: "Zona Kuning (Skor 2,20 - 3,40)",
           val2: fmtArea(zKuning.areaM2) + " (" + fmtPct(zKuning.percentOfPolygon) + " poligon)",
           _cellFill: { val2: ZONE_COLORS.kuning.fillRgb },
@@ -1295,8 +1293,8 @@
     // 5. TABEL 3: MATRIKS RINCIAN SEGMEN KAVLING & PARAMETER GEOTEKNIK (INFINITE SLOPE FS)
     builder.drawSectionHeading(
       "4",
-      "Tabel Matriks Rincian Segmen Kavling & Geoteknik (Infinite Slope FS)",
-      "Rincian skor 5 kriteria (L=Lereng, T=Tanah, B=Batuan, H=Hujan, PL=Penggunaan Lahan), parameter mekanika tanah, dan nilai FS tiap segmen."
+      "Tabel Matriks Rincian Segmen Kavling & Geoteknik (Syarat Aman SNI 8460:2017: FS >= 1,50)",
+      "Rincian skor 5 kriteria (L=Lereng, T=Tanah, B=Batuan, H=Hujan, PL=Penggunaan Lahan), parameter mekanika tanah, FS_awal, FS_pasca & Koridor SPK."
     );
 
     const totalPolyArea = loc.areaM2 || 1;
@@ -1343,7 +1341,8 @@
           fmtNum(g.qKpa, 1),
         fsVal:
           (seg.fs != null ? fmtNum(seg.fs, 2) : "-") +
-          (seg.fsLabel ? " (" + seg.fsLabel + ")" : ""),
+          (seg.fsPasca != null ? " -> " + fmtNum(seg.fsPasca, 2) : "") +
+          (seg.fsLabel ? " (" + seg.fsLabel + ")" : " (Syarat Aman SNI 8460:2017: FS >= 1,50)"),
         _cellFill: { zone: zInfo.fillRgb },
       };
     });

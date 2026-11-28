@@ -125,10 +125,10 @@ export const SPATIAL_LAYERS_CONFIG = [
     essentialFields: ["jns_tnh", "skor tanah", "ket_tanah", "c_kpa", "phi_deg", "gamma_sat", "z", "is_expansive"],
     legendItems: [
       { color: "#ef4444", label: "Skor 5: Grumusol", subLabel: "c'=9,0 kPa, φ'=15,0°, γsat=19,0 kN/m³, z=2,0 m (Ekspansif)" },
-      { color: "#f59e0b", label: "Skor 4: Latosol & Mediteran", subLabel: "c'=10–11 kPa, φ'=18°–20°, γsat=18,5 kN/m³, z=2,0–2,5 m" },
-      { color: "#eab308", label: "Skor 3: Regosol", subLabel: "c'=3,5 kPa, φ'=36,0°, γsat=17,5 kN/m³, z=1,0 m" },
-      { color: "#84cc16", label: "Skor 2: Kambisol", subLabel: "c'=8,0 kPa, φ'=30,0°, γsat=18,0 kN/m³, z=2,0 m" },
-      { color: "#10b981", label: "Skor 1: Aluvial", subLabel: "c'=14,0 kPa, φ'=25,0°, γsat=18,5 kN/m³, z=4,0 m" },
+      { color: "#f59e0b", label: "Skor 4: Latosol & Mediteran", subLabel: "c'=10,0–11,0 kPa, φ'=18,0°–20,0°, γsat=18,5 kN/m³, z=2,0 m" },
+      { color: "#eab308", label: "Skor 3: Regosol", subLabel: "c'=3,5 kPa, φ'=36,0°, γsat=17,5 kN/m³, z=1,5 m" },
+      { color: "#84cc16", label: "Skor 2: Kambisol", subLabel: "c'=8,0 kPa, φ'=30,0°, γsat=18,0 kN/m³, z=1,5 m" },
+      { color: "#10b981", label: "Skor 1: Aluvial", subLabel: "c'=14,0 kPa, φ'=25,0°, γsat=18,5 kN/m³, z=2,0 m" },
     ],
   },
   {

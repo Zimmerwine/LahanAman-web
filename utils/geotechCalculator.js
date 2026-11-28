@@ -12,8 +12,10 @@
  */
 
 export const GAMMA_WATER_KN_M3 = 9.81;
-export const MAX_FS_CAP = 5.0;
-export const FLAT_SLOPE_THRESHOLD_DEG = 2.0;
+export const MAX_FS_CAP = 9.99;
+export const FLAT_SLOPE_THRESHOLD_DEG = 0.5;
+export const SNI_FS_SAFE_THRESHOLD = 1.50;
+export const SNI_FS_TARGET_LABEL = "Syarat Aman SNI 8460:2017: FS \u2265 1,50";
 
 export const GPKG_WEIGHTS = {
   lereng: 0.30,
@@ -23,7 +25,7 @@ export const GPKG_WEIGHTS = {
   lahan: 0.10,
 };
 
-// Database Karakteristik Tanah dari Dasar.xlsx
+// 1. Tabel Lookup Parameter Tanah Terkunci (Layer 2)
 export const SOIL_DATABASE = {
   grumusol: {
     nama: "Grumusol",
@@ -56,7 +58,7 @@ export const SOIL_DATABASE = {
     z: 2.0,
     is_expansive: false,
     ket: "Latosol (Lempung Pelapukan Tebal - Rawan)",
-    alasan: "Solum lempung tebal (>2m) di atas batuan kedap air Semilir/Nglanggran. Beban massa tanah berat saat jenuh memicu longsoran rotasi.",
+    alasan: "Solum lempung tebal (2,0 m) di atas batuan kedap air Semilir/Nglanggran. Beban massa tanah berat saat jenuh memicu longsoran.",
   },
   mediteran: {
     nama: "Mediteran",
@@ -64,10 +66,10 @@ export const SOIL_DATABASE = {
     c_kpa: 11.0,
     phi_deg: 20.0,
     gamma_sat: 18.5,
-    z: 2.5,
+    z: 2.0,
     is_expansive: false,
     ket: "Mediteran (Lempung Karbonat/Tuf - Rawan)",
-    alasan: "Tanah lempung pelapukan karbonat/tuf tebal (>2m) berplastisitas sedang–tinggi di lereng perbukitan.",
+    alasan: "Tanah lempung pelapukan karbonat/tuf (2,0 m) berplastisitas sedang–tinggi di lereng perbukitan.",
   },
   regosol: {
     nama: "Regosol",
@@ -75,10 +77,10 @@ export const SOIL_DATABASE = {
     c_kpa: 3.5,
     phi_deg: 36.0,
     gamma_sat: 17.5,
-    z: 1.0,
+    z: 1.5,
     is_expansive: false,
     ket: "Regosol (Pasir Vulkanik Lepas - Sedang)",
-    alasan: "Pasir vulkanik lepas dengan drainase baik (φ'=36°), namun ikatan kohesi lemah (c'=3.5 kPa) sehingga rentan tergerus pada tebing terjal.",
+    alasan: "Pasir vulkanik lepas dengan drainase baik (φ'=36°), namun ikatan kohesi lemah (c'=3,5 kPa) sehingga rentan tergerus pada tebing terjal.",
   },
   kambisol: {
     nama: "Kambisol",
@@ -86,7 +88,7 @@ export const SOIL_DATABASE = {
     c_kpa: 8.0,
     phi_deg: 30.0,
     gamma_sat: 18.0,
-    z: 2.0,
+    z: 1.5,
     is_expansive: false,
     ket: "Kambisol (Lempung Berpasir Drainase Baik - Rendah)",
     alasan: "Struktur agregat tanah lebih mantap, drainase sedang–baik, tidak ekspansif ekstrem.",
@@ -97,7 +99,7 @@ export const SOIL_DATABASE = {
     c_kpa: 14.0,
     phi_deg: 25.0,
     gamma_sat: 18.5,
-    z: 4.0,
+    z: 2.0,
     is_expansive: false,
     ket: "Aluvial (Endapan Dataran - Aman Longsor Lereng)",
     alasan: "Endapan muda dataran banjir sungai rata (<4°), sangat aman dari ancaman kelongsoran lereng.",
@@ -391,8 +393,180 @@ export function evaluateLandUse(tutupanRaw, betaDeg = 0, skorOverride) {
 }
 
 /**
- * 6. Hitung Faktor Keamanan Lereng Tak Terhingga (Infinite Slope FS)
+ * Validasi rasio_m berada di rentang [0.0, 1.0] (jangan sampai terisi skor_hujan atau curah hujan mm)
  */
+export function sanitizeRasioM(rasioMInput, fallback = 0.60) {
+  const n = Number(rasioMInput);
+  if (!Number.isFinite(n)) return fallback;
+  if (n >= 0.0 && n <= 1.0) return n;
+  const sMap = { 1: 0.45, 2: 0.45, 3: 0.60, 4: 0.75, 5: 0.90 };
+  if (Number.isInteger(Math.round(n)) && Math.round(n) >= 1 && Math.round(n) <= 5) {
+    return sMap[Math.round(n)] || fallback;
+  }
+  if (n > 3000) return 0.90;
+  if (n >= 2501) return 0.75;
+  if (n >= 2001) return 0.60;
+  if (n >= 1500) return 0.45;
+  return fallback;
+}
+
+/**
+ * 6. Hitung Faktor Keamanan Lereng Tak Terhingga (Infinite Slope with Seepage)
+ *    dan Penentuan FS_pasca sesuai Koridor SPK (Target SNI 8460:2017 >= 1.50)
+ */
+export function computeRawInfiniteSlopeFS(betaDeg, cPrime, phiDeg, gammaSat, zDepth, rasioM) {
+  const beta = Math.max(0.0, Number(betaDeg) || 0.0);
+  const c = Number(cPrime) || 3.5;
+  const phi = Number(phiDeg) || 30.0;
+  const gamma = Number(gammaSat) || 18.0;
+  const z = Number(zDepth) || 2.0;
+  const m = sanitizeRasioM(rasioM, 0.60);
+
+  const sigmaV = gamma * z;
+  const uRaw = m * GAMMA_WATER_KN_M3 * z;
+
+  if (beta <= FLAT_SLOPE_THRESHOLD_DEG) {
+    return {
+      fsRaw: 9.99,
+      fs: 9.99,
+      sigmaV: Number(sigmaV.toFixed(2)),
+      uKpa: Number(uRaw.toFixed(2)),
+      sigmaNPrime: Number((sigmaV - uRaw).toFixed(2)),
+      tauF: Number((c + (sigmaV - uRaw) * Math.tan((phi * Math.PI) / 180)).toFixed(4)),
+      tauD: 0.0,
+      isFlatLocked: true,
+    };
+  }
+
+  const betaRad = (beta * Math.PI) / 180;
+  const phiRad = (phi * Math.PI) / 180;
+  const cosB = Math.cos(betaRad);
+  const sinB = Math.sin(betaRad);
+
+  const tauD = sigmaV * sinB * cosB;
+  if (tauD <= 1e-6) {
+    return {
+      fsRaw: 9.99,
+      fs: 9.99,
+      sigmaV: Number(sigmaV.toFixed(2)),
+      uKpa: Number(uRaw.toFixed(2)),
+      sigmaNPrime: Number(((sigmaV - uRaw) * cosB * cosB).toFixed(2)),
+      tauF: Number((c + (sigmaV - uRaw) * cosB * cosB * Math.tan(phiRad)).toFixed(4)),
+      tauD: 0.0,
+      isFlatLocked: true,
+    };
+  }
+
+  const sigmaNPrime = (sigmaV - uRaw) * Math.pow(cosB, 2);
+  const tauF = c + sigmaNPrime * Math.tan(phiRad);
+  const fsRaw = Math.min(MAX_FS_CAP, Math.max(0.05, tauF / tauD));
+  const fs = Number(fsRaw.toFixed(2));
+
+  return {
+    fsRaw: Number(fsRaw.toFixed(4)),
+    fs,
+    sigmaV: Number(sigmaV.toFixed(2)),
+    uKpa: Number(uRaw.toFixed(2)),
+    sigmaNPrime: Number(sigmaNPrime.toFixed(4)),
+    tauF: Number(tauF.toFixed(4)),
+    tauD: Number(tauD.toFixed(4)),
+    isFlatLocked: false,
+  };
+}
+
+export function evaluateSpkCorridor(
+  betaDeg,
+  fsAwalRaw,
+  cPrime,
+  phiDeg,
+  gammaSat,
+  zDepth,
+  options = {}
+) {
+  const betaAwal = Math.max(0.0, Number(betaDeg) || 0.0);
+  const soilStr = String(options.jenisTanah || "").toLowerCase();
+  const isExpansive =
+    Boolean(options.isExpansive) ||
+    soilStr.includes("grumusol") ||
+    soilStr.includes("grumosol") ||
+    soilStr.includes("vertisol");
+  const rockStr = String(options.formasiBatuan || options.simbolFormasi || "").toLowerCase();
+  const isLandslideDeposit =
+    /\bna\b/.test(rockStr) ||
+    rockStr.includes("(na)") ||
+    rockStr.includes("endapan longsoran") ||
+    rockStr.includes("avalanche");
+
+  let koridor = "KOR-01";
+  let betaPasca = betaAwal;
+  let mPasca = 0.45;
+  let fsPascaRaw = null;
+  let fsPasca = null;
+  let rekomendasiKoridor = "";
+
+  if (betaAwal > 35.0 || isLandslideDeposit) {
+    koridor = "KOR-06";
+    betaPasca = null;
+    mPasca = null;
+    rekomendasiKoridor =
+      "KOR-06 (\u03B2 > 35\u00B0 atau endapan longsoran na): Tidak direkomendasikan untuk bangunan (status Zona Konservasi).";
+  } else if (betaAwal > 25.0 || fsAwalRaw < 1.25) {
+    koridor = "KOR-05";
+    betaPasca = Math.min(betaAwal, 14.0);
+    mPasca = 0.45;
+    let calc = computeRawInfiniteSlopeFS(betaPasca, cPrime, phiDeg, gammaSat, zDepth, mPasca);
+    while (calc.fsRaw < 1.50 && betaPasca > 0.5) {
+      betaPasca = Number(Math.max(0.5, betaPasca - 0.5).toFixed(2));
+      calc = computeRawInfiniteSlopeFS(betaPasca, cPrime, phiDeg, gammaSat, zDepth, mPasca);
+    }
+    fsPascaRaw = calc.fsRaw;
+    fsPasca = calc.fs;
+    rekomendasiKoridor =
+      "KOR-05 (25\u00B0 < \u03B2 \u2264 35\u00B0 atau FS_awal < 1,25): Terasering + Dinding Penahan Tanah (DPT) dengan lereng antar-teras memenuhi FS_pasca \u2265 1,50 dan desain DPT memenuhi FK_geser \u2265 1,50 serta FK_guling \u2265 2,00 (SNI 8460:2017).";
+  } else if (betaAwal > 15.0 || fsAwalRaw < 1.50) {
+    koridor = "KOR-04";
+    betaPasca = Math.min(betaAwal, 14.0);
+    mPasca = 0.45;
+    let calc = computeRawInfiniteSlopeFS(betaPasca, cPrime, phiDeg, gammaSat, zDepth, mPasca);
+    while (calc.fsRaw < 1.50 && betaPasca > 0.5) {
+      betaPasca = Number(Math.max(0.5, betaPasca - 0.5).toFixed(2));
+      calc = computeRawInfiniteSlopeFS(betaPasca, cPrime, phiDeg, gammaSat, zDepth, mPasca);
+    }
+    fsPascaRaw = calc.fsRaw;
+    fsPasca = calc.fs;
+    rekomendasiKoridor =
+      "KOR-04 (15\u00B0 < \u03B2 \u2264 25\u00B0 atau 1,25 \u2264 FS_awal < 1,50): Cut & fill terasering ke \u03B2_pasca = 14\u00B0 (atau diturunkan bertahap hingga FS_pasca \u2265 1,50) + sub-drain (m_pasca = 0,45).";
+  } else if (betaAwal > 8.0) {
+    koridor = "KOR-03";
+    betaPasca = Math.min(betaAwal, 10.0);
+    mPasca = 0.45;
+    const calc = computeRawInfiniteSlopeFS(betaPasca, cPrime, phiDeg, gammaSat, zDepth, mPasca);
+    fsPascaRaw = calc.fsRaw;
+    fsPasca = calc.fs;
+    rekomendasiKoridor =
+      "KOR-03 (8\u00B0 < \u03B2 \u2264 15\u00B0): Pelandaian ringan ke \u03B2_pasca = min(\u03B2_awal, 10\u00B0) + drainase (m_pasca = 0,45).";
+  } else {
+    koridor = isExpansive ? "KOR-02" : "KOR-01";
+    betaPasca = betaAwal;
+    mPasca = 0.45;
+    const calc = computeRawInfiniteSlopeFS(betaPasca, cPrime, phiDeg, gammaSat, zDepth, mPasca);
+    fsPascaRaw = calc.fsRaw;
+    fsPasca = calc.fs;
+    rekomendasiKoridor = isExpansive
+      ? "KOR-02 (\u03B2 \u2264 8\u00B0, Grumusol Ekspansif): \u03B2_pasca = \u03B2_awal, drainase keliling menurunkan kejenuhan ke m_pasca = 0,45 + perbaikan tanah ekspansif."
+      : "KOR-01 (\u03B2 \u2264 8\u00B0): \u03B2_pasca = \u03B2_awal, drainase keliling menurunkan kejenuhan ke m_pasca = 0,45.";
+  }
+
+  return {
+    koridor,
+    betaPasca,
+    mPasca,
+    fsPascaRaw,
+    fsPasca,
+    rekomendasiKoridor,
+  };
+}
+
 export function computeInfiniteSlopeFS(
   betaDeg,
   cPrime,
@@ -401,64 +575,52 @@ export function computeInfiniteSlopeFS(
   gammaSat,
   zDepth,
   rasioM,
-  qSurcharge
+  qSurcharge,
+  options = {}
 ) {
-  const u = Number((rasioM * GAMMA_WATER_KN_M3 * zDepth).toFixed(2));
+  const mClean = sanitizeRasioM(rasioM, 0.60);
+  const raw = computeRawInfiniteSlopeFS(betaDeg, cPrime, phiDeg, gammaSat, zDepth, mClean);
+  const kor = evaluateSpkCorridor(betaDeg, raw.fsRaw, cPrime, phiDeg, gammaSat, zDepth, options);
 
-  if (betaDeg <= FLAT_SLOPE_THRESHOLD_DEG) {
-    return {
-      fs: MAX_FS_CAP,
-      fsStatus: "STABIL",
-      fsBadgeColor: "emerald",
-      fsKeterangan: "Lereng datar (β ≤ 2.0°); gaya gravitasi bekerja murni vertikal mengikat massa tanah.",
-      uKpa: u,
-      isFlatLocked: true,
-    };
-  }
-
-  const betaRad = (betaDeg * Math.PI) / 180;
-  const phiRad = (phiDeg * Math.PI) / 180;
-  const cosB = Math.cos(betaRad);
-  const sinB = Math.sin(betaRad);
-
-  const denom = (gammaSat * zDepth + qSurcharge) * sinB * cosB;
-  if (denom <= 1e-6) {
-    return {
-      fs: MAX_FS_CAP,
-      fsStatus: "STABIL",
-      fsBadgeColor: "emerald",
-      fsKeterangan: "Gaya pendorong lereng mendekati nol.",
-      uKpa: u,
-      isFlatLocked: true,
-    };
-  }
-
-  const normalEff = (gammaSat * zDepth - u + qSurcharge) * Math.pow(cosB, 2);
-  const num = cPrime + cr + normalEff * Math.tan(phiRad);
-  const fsRaw = num / denom;
-  const fsCapped = Number(Math.min(MAX_FS_CAP, Math.max(0.10, fsRaw)).toFixed(2));
-
-  let fsStatus = "STABIL";
+  let fsStatus = `Aman \u2014 ${kor.koridor}`;
   let fsBadgeColor = "emerald";
-  let fsKeterangan = "Lereng stabil aman (FS > 1.25); cocok untuk permukiman dengan pondasi standar.";
+  let fsKeterangan = `${SNI_FS_TARGET_LABEL}. ${kor.rekomendasiKoridor}`;
 
-  if (fsCapped < 1.07) {
-    fsStatus = "LABIL / LONGSOR";
+  if (kor.koridor === "KOR-06") {
+    fsStatus = "Zona Konservasi \u2014 KOR-06";
     fsBadgeColor = "red";
-    fsKeterangan = "Lereng labil rawan longsor (FS < 1.07); melampaui kapasitas geser tanah penutup!";
-  } else if (fsCapped <= 1.25) {
-    fsStatus = "KRITIS";
+  } else if (raw.fsRaw < 1.25) {
+    fsStatus = `Kritis \u2014 ${kor.koridor}`;
+    fsBadgeColor = "red";
+  } else if (raw.fsRaw < SNI_FS_SAFE_THRESHOLD) {
+    fsStatus = `Tidak Aman \u2014 ${kor.koridor}`;
     fsBadgeColor = "amber";
-    fsKeterangan = "Kondisi lereng kritis (1.07 ≤ FS ≤ 1.25); memerlukan rekayasa lereng / perkuatan dinding penahan.";
+  }
+
+  if (raw.isFlatLocked) {
+    fsKeterangan = `Lereng datar (\u03B2 \u2264 0,5\u00B0); FS_awal = 9,99 (stabil gravitasi). ${kor.rekomendasiKoridor}`;
   }
 
   return {
-    fs: fsCapped,
+    fs: raw.fs,
+    fsRaw: raw.fsRaw,
+    fsAwal: raw.fs,
+    fsAwalRaw: raw.fsRaw,
+    fsPasca: kor.fsPasca,
+    fsPascaRaw: kor.fsPascaRaw,
+    koridor: kor.koridor,
+    betaPasca: kor.betaPasca,
+    mPasca: kor.mPasca,
     fsStatus,
     fsBadgeColor,
     fsKeterangan,
-    uKpa: u,
-    isFlatLocked: false,
+    sniLabel: SNI_FS_TARGET_LABEL,
+    uKpa: raw.uKpa,
+    sigmaVKpa: raw.sigmaV,
+    sigmaNPrimeKpa: raw.sigmaNPrime,
+    tauFKpa: raw.tauF,
+    tauDKpa: raw.tauD,
+    isFlatLocked: raw.isFlatLocked,
   };
 }
 
@@ -551,7 +713,13 @@ export function analyzeGeotechPoint(payload = {}) {
     pTanah.gammaSatKnM3,
     pTanah.zDepthM,
     pHujan.rasioKejenuhanM,
-    pLahan.bebanTambahanQKpa
+    pLahan.bebanTambahanQKpa,
+    {
+      jenisTanah: pTanah.jenisTanah,
+      isExpansive: pTanah.isExpansive,
+      formasiBatuan: pBatuan.formasiBatuan,
+      simbolFormasi: pBatuan.simbolFormasi,
+    }
   );
 
   return {
@@ -562,6 +730,15 @@ export function analyzeGeotechPoint(payload = {}) {
     warnaHex: zone.warnaHex,
     borderHex: zone.borderHex,
     fs: fsResult.fs,
+    fsRaw: fsResult.fsRaw,
+    fsAwal: fsResult.fsAwal,
+    fsAwalRaw: fsResult.fsAwalRaw,
+    fsPasca: fsResult.fsPasca,
+    fsPascaRaw: fsResult.fsPascaRaw,
+    koridor: fsResult.koridor,
+    betaPasca: fsResult.betaPasca,
+    mPasca: fsResult.mPasca,
+    sniLabel: fsResult.sniLabel,
     fsStatus: fsResult.fsStatus,
     fsBadgeColor: fsResult.fsBadgeColor,
     fsKeterangan: fsResult.fsKeterangan,
@@ -582,6 +759,11 @@ export function analyzeGeotechPoint(payload = {}) {
       rasioKejenuhanM: pHujan.rasioKejenuhanM,
       poreWaterPressureUKpa: fsResult.uKpa,
       surchargeLoadQKpa: pLahan.bebanTambahanQKpa,
+      fsAwal: fsResult.fsAwal,
+      fsPasca: fsResult.fsPasca,
+      koridor: fsResult.koridor,
+      betaPasca: fsResult.betaPasca,
+      mPasca: fsResult.mPasca,
     },
   };
 }
